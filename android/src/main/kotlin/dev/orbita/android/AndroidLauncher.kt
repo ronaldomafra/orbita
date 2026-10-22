@@ -8,8 +8,8 @@ import dev.orbita.game.OrbitaGame
 class AndroidLauncher : AndroidApplication() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Quantidade de unidades do spike: adb shell am start ... --ei units 3000
-        val units = intent.getIntExtra("units", 2000)
+        // Spike técnico da F5: adb shell am start ... --ei units 3000 (sem o extra, abre a partida)
+        val units = intent.getIntExtra("units", 0)
         val config = AndroidApplicationConfiguration().apply {
             useImmersiveMode = true
             useAccelerometer = false

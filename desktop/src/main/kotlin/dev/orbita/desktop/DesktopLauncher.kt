@@ -5,9 +5,9 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
 import dev.orbita.game.OrbitaGame
 
 fun main(args: Array<String>) {
-    val units = args.firstOrNull()?.toIntOrNull() ?: 2000
+    val units = args.firstOrNull()?.toIntOrNull() ?: 0
     val config = Lwjgl3ApplicationConfiguration().apply {
-        setTitle("Órbita — spike")
+        setTitle("Órbita")
         setWindowedMode(1520, 720)
         useVsync(true)
         setForegroundFPS(60)
