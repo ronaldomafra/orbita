@@ -43,6 +43,9 @@ class Textures : Disposable {
     /** Brilho em cruz (+) das estrelas mais fortes. */
     val cross: TextureRegion
 
+    /** Núcleo de unidade: estrela de 4 pontas afiada com centro intenso (AJ-18). */
+    val star4: TextureRegion
+
     init {
         val pixmap = Pixmap(ATLAS_W, ATLAS_H, Pixmap.Format.RGBA8888).apply { blending = Pixmap.Blending.None }
         paint(pixmap, 0, 0, 128) { nx, ny -> sphereTexel(nx, ny) }
@@ -56,6 +59,12 @@ class Textures : Disposable {
             val arm = max((1f - abs(nx)) * (1f - (abs(ny) * 6f).coerceAtMost(1f)), (1f - abs(ny)) * (1f - (abs(nx) * 6f).coerceAtMost(1f)))
             Color.rgba8888(1f, 1f, 1f, arm.coerceIn(0f, 1f).pow(1.5f))
         }
+        paint(pixmap, 158 + 2 * PAD, ROW2, 32) { nx, ny ->
+            val ax = abs(nx); val ay = abs(ny)
+            val arms = max((1f - ax) * (1f - (ay * 4.5f).coerceAtMost(1f)), (1f - ay) * (1f - (ax * 4.5f).coerceAtMost(1f)))
+            val core = (1f - hypot(nx, ny) * 2.2f).coerceIn(0f, 1f)
+            Color.rgba8888(1f, 1f, 1f, max(arms.coerceIn(0f, 1f).pow(1.3f), core))
+        }
         atlas = Texture(pixmap).apply { setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear) }
         pixmap.dispose()
 
@@ -67,6 +76,7 @@ class Textures : Disposable {
         disc = TextureRegion(atlas, 0, ROW2, 128, 128)
         dot = TextureRegion(atlas, 128 + PAD, ROW2, 8, 8)
         cross = TextureRegion(atlas, 140 + PAD, ROW2, 16, 16)
+        star4 = TextureRegion(atlas, 158 + 2 * PAD, ROW2, 32, 32)
     }
 
     /** Preenche um quadrado [size]×[size] em (ox, oy) com `texel(nx, ny)` em coordenadas normalizadas [-1, 1]. */

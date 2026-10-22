@@ -179,10 +179,13 @@ class Simulation(
             if (faction.eliminated) continue
             val count = Rules.unitsPerSpawn(p.level)
             val start = rng.nextFloat() * TWO_PI
+            var spawned = 0
             for (k in 0 until count) {
                 if (faction.dropUnit()) continue
                 spawnAt(p, p.owner, start + k * TWO_PI / count)
+                spawned++
             }
+            if (spawned > 0) events.add(SimEvents.SPAWN, p.x, p.y, p.owner, spawned)
         }
     }
 

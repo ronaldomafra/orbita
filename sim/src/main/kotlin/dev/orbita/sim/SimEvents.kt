@@ -42,5 +42,7 @@ class SimEvents {
         const val DESTROYED = 3
         /** Unidade abatida em combate ([amount] = power perdido). AJ-08 */
         const val DEATH = 4
+        /** Leva de produção de um planeta ([amount] = unidades geradas). AJ-21 */
+        const val SPAWN = 5
     }
 }
