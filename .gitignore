@@ -1,0 +1,24 @@
+# Evidências e binários extraídos (nunca versionar)
+evidence/
+*.apk
+*.apks
+*.xapk
+*.aab
+*.obb
+*.so
+*.dex
+decompiled/
+jadx-out/
+ghidra-projects/
+
+# Build / IDE
+build/
+.gradle/
+local.properties
+.idea/
+*.iml
+.kotlin/
+out/
+
+# SO
+.DS_Store
