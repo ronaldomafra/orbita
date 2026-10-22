@@ -34,6 +34,15 @@ class Textures : Disposable {
     /** Brilho gaussiano bem suave (coroas dos planetas). */
     val softGlow: TextureRegion
 
+    /** Disco preenchido com borda suavizada (seleção). */
+    val disc: TextureRegion
+
+    /** Ponto nítido de estrela (núcleo duro, queda curta). */
+    val dot: TextureRegion
+
+    /** Brilho em cruz (+) das estrelas mais fortes. */
+    val cross: TextureRegion
+
     init {
         val pixmap = Pixmap(ATLAS_W, ATLAS_H, Pixmap.Format.RGBA8888).apply { blending = Pixmap.Blending.None }
         paint(pixmap, 0, 0, 128) { nx, ny -> sphereTexel(nx, ny) }
@@ -41,6 +50,12 @@ class Textures : Disposable {
         paint(pixmap, 256 + 2 * PAD, 0, 64) { nx, ny -> radialTexel(nx, ny) { d -> (1f - d).coerceIn(0f, 1f).let { it * it } } }
         paint(pixmap, 256 + 2 * PAD, 64 + PAD, 32) { nx, ny -> radialTexel(nx, ny) { d -> (1f - d).coerceIn(0f, 1f).pow(3) } }
         paint(pixmap, 320 + 3 * PAD, 0, 128) { nx, ny -> radialTexel(nx, ny) { d -> (kotlin.math.exp(-d * d * 4.5f) * (1f - d)).coerceIn(0f, 1f) } }
+        paint(pixmap, 0, ROW2, 128) { nx, ny -> radialTexel(nx, ny) { d -> ((1f - d) * 40f).coerceIn(0f, 1f) } }
+        paint(pixmap, 128 + PAD, ROW2, 8) { nx, ny -> radialTexel(nx, ny) { d -> (1.25f - d).coerceIn(0f, 1f).pow(2) } }
+        paint(pixmap, 140 + PAD, ROW2, 16) { nx, ny ->
+            val arm = max((1f - abs(nx)) * (1f - (abs(ny) * 6f).coerceAtMost(1f)), (1f - abs(ny)) * (1f - (abs(nx) * 6f).coerceAtMost(1f)))
+            Color.rgba8888(1f, 1f, 1f, arm.coerceIn(0f, 1f).pow(1.5f))
+        }
         atlas = Texture(pixmap).apply { setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear) }
         pixmap.dispose()
 
@@ -49,6 +64,9 @@ class Textures : Disposable {
         glow = TextureRegion(atlas, 256 + 2 * PAD, 0, 64, 64)
         spark = TextureRegion(atlas, 256 + 2 * PAD, 64 + PAD, 32, 32)
         softGlow = TextureRegion(atlas, 320 + 3 * PAD, 0, 128, 128)
+        disc = TextureRegion(atlas, 0, ROW2, 128, 128)
+        dot = TextureRegion(atlas, 128 + PAD, ROW2, 8, 8)
+        cross = TextureRegion(atlas, 140 + PAD, ROW2, 16, 16)
     }
 
     /** Preenche um quadrado [size]×[size] em (ox, oy) com `texel(nx, ny)` em coordenadas normalizadas [-1, 1]. */
@@ -82,6 +100,7 @@ class Textures : Disposable {
     private companion object {
         const val PAD = 2
         const val ATLAS_W = 512
-        const val ATLAS_H = 128
+        const val ATLAS_H = 256
+        const val ROW2 = 128 + PAD
     }
 }

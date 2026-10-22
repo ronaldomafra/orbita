@@ -5,7 +5,6 @@ import dev.orbita.sim.NO_FACTION
 
 /** Paleta própria do Órbita. A facção 0 é sempre o jogador. */
 object Palette {
-    val background = Color(0.008f, 0.010f, 0.028f, 1f)
     val neutral = Color(0.55f, 0.58f, 0.64f, 1f)
 
     private val factions = arrayOf(

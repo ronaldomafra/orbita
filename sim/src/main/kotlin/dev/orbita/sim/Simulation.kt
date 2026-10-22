@@ -37,6 +37,7 @@ class Simulation(
     private val log = ArrayList<TimedCommand>()
     private val unitCount = IntArray(map.factionCount)
     private val powerSum = IntArray(map.factionCount)
+    private var selection = IntArray(256)
 
     // Grade espacial por facção (D14); célula = alcance de engajamento.
     private val cellSize = config.engageRange
@@ -132,6 +133,7 @@ class Simulation(
         if (c.target is Target.PlanetRef && c.target.planetId !in planets.indices) return
         val r2 = c.radius * c.radius
         var sent = 0
+        var count = 0
         for (i in 0 until units.highWater) {
             if (!units.alive[i] || units.owner[i] != c.faction) continue
             val dx = units.x[i] - c.fromX
@@ -139,17 +141,32 @@ class Simulation(
             if (dx * dx + dy * dy > r2) continue
             if (sent + units.power[i] > c.maxPower) continue
             sent += units.power[i]
-            when (val t = c.target) {
-                is Target.Point -> {
-                    units.mode[i] = MODE_MOVE_POINT
-                    units.targetX[i] = t.x
-                    units.targetY[i] = t.y
-                }
-                is Target.PlanetRef -> {
-                    units.mode[i] = MODE_MOVE_PLANET
-                    units.targetPlanet[i] = t.planetId
-                }
+            if (count == selection.size) selection = selection.copyOf(count * 2)
+            selection[count++] = i
+        }
+        when (val t = c.target) {
+            is Target.Point -> sendToCloud(selection, count, t.x, t.y)
+            is Target.PlanetRef -> for (k in 0 until count) {
+                val i = selection[k]
+                units.mode[i] = MODE_MOVE_PLANET
+                units.targetPlanet[i] = t.planetId
             }
+        }
+    }
+
+    /**
+     * Manda [count] unidades para uma nuvem em torno de ([cx], [cy]): cada uma recebe um ponto de repouso
+     * com densidade maior no centro e raio ∝ √n (AJ-11).
+     */
+    private fun sendToCloud(indices: IntArray, count: Int, cx: Float, cy: Float) {
+        val radius = config.cloudSpread * sqrt(count.toFloat())
+        for (k in 0 until count) {
+            val i = indices[k]
+            val angle = rng.nextFloat() * TWO_PI
+            val r = radius * (rng.nextFloat() + rng.nextFloat()) * 0.5f
+            units.mode[i] = MODE_MOVE_POINT
+            units.targetX[i] = cx + r * cos(angle)
+            units.targetY[i] = cy + r * sin(angle)
         }
     }
 
@@ -188,6 +205,9 @@ class Simulation(
         units.power[i] = power
         units.x[i] = x
         units.y[i] = y
+        units.targetX[i] = x
+        units.targetY[i] = y
+        units.speedFactor[i] = 1f + (rng.nextFloat() - 0.5f) * 2f * config.speedVariation
         unitCount[owner]++
         powerSum[owner] += power
         return i
@@ -293,8 +313,8 @@ class Simulation(
             units.lock[j] = -1
             setPower(i, units.power[i] - m)
             setPower(j, units.power[j] - m)
-            if (units.power[i] == 0) kill(i) else resumeAfterCombat(i)
-            if (units.power[j] == 0) kill(j) else resumeAfterCombat(j)
+            if (units.power[i] == 0) { events.add(SimEvents.DEATH, units.x[i], units.y[i], units.owner[i], m); kill(i) } else resumeAfterCombat(i)
+            if (units.power[j] == 0) { events.add(SimEvents.DEATH, units.x[j], units.y[j], units.owner[j], m); kill(j) } else resumeAfterCombat(j)
         }
     }
 
@@ -338,32 +358,96 @@ class Simulation(
                     units.y[i] = p.y + units.orbitY[i]
                 }
                 MODE_MOVE_POINT -> {
-                    if (stepToward(i, units.targetX[i], units.targetY[i], speed, 0f)) units.mode[i] = MODE_HOLD
+                    if (steerToward(i, units.targetX[i], units.targetY[i], speed * units.speedFactor[i], 0f, -1)) {
+                        units.mode[i] = MODE_HOLD
+                        units.driftX[i] = 0f
+                        units.driftY[i] = 0f
+                    }
                 }
                 MODE_MOVE_PLANET -> {
                     val p = planets[units.targetPlanet[i]]
                     val reach = config.planetRadius(p.level) + config.arriveMargin
-                    if (stepToward(i, p.x, p.y, speed, reach)) arrive(i, p)
+                    if (steerToward(i, p.x, p.y, speed * units.speedFactor[i], reach, p.id)) arrive(i, p)
                 }
+                MODE_HOLD -> drift(i)
             }
         }
     }
 
-    /** Move a unidade até [stopAt] do alvo; retorna true quando chegou. */
-    private fun stepToward(i: Int, tx: Float, ty: Float, speed: Float, stopAt: Float): Boolean {
-        val dx = tx - units.x[i]
-        val dy = ty - units.y[i]
+    /**
+     * Move a unidade até [stopAt] do alvo, contornando planetas ativos no caminho (AJ-03).
+     * Planetas de nível 0 (sem dono ativo) não bloqueiam (AJ-04), nem o próprio planeta-alvo [targetPlanet].
+     * Retorna true quando chegou.
+     */
+    private fun steerToward(i: Int, tx: Float, ty: Float, speed: Float, stopAt: Float, targetPlanet: Int): Boolean {
+        val x = units.x[i]
+        val y = units.y[i]
+        val dx = tx - x
+        val dy = ty - y
         val d = sqrt(dx * dx + dy * dy)
         if (d <= stopAt) return true
         val remaining = d - stopAt
         if (remaining <= speed) {
-            units.x[i] += dx / d * remaining
-            units.y[i] += dy / d * remaining
+            units.x[i] = x + dx / d * remaining
+            units.y[i] = y + dy / d * remaining
             return true
         }
-        units.x[i] += dx / d * speed
-        units.y[i] += dy / d * speed
+        var dirX = dx / d
+        var dirY = dy / d
+        for (p in planets) {
+            if (p.level < 1 || p.id == targetPlanet) continue
+            val r = config.planetRadius(p.level) + config.avoidMargin
+            val px = p.x - x
+            val py = p.y - y
+            val pd2 = px * px + py * py
+            val reach = r + config.avoidLookahead
+            if (pd2 > reach * reach) continue
+            // Ponto de destino dentro do planeta: não há como contornar.
+            val tpx = tx - p.x
+            val tpy = ty - p.y
+            if (tpx * tpx + tpy * tpy < r * r) continue
+            val pd = sqrt(pd2)
+            if (pd < r) {
+                // Já dentro da faixa de colisão: sai pela tangente mais próxima do rumo, com componente para fora.
+                val outX = -px / pd
+                val outY = -py / pd
+                val tanX = if (-py * dirX + px * dirY >= 0f) -py / pd else py / pd
+                val tanY = if (-py * dirX + px * dirY >= 0f) px / pd else -px / pd
+                dirX = tanX + outX * 0.6f
+                dirY = tanY + outY * 0.6f
+            } else {
+                val along = px * dirX + py * dirY
+                if (along <= 0f) continue
+                val lateral = px * -dirY + py * dirX
+                if (lateral >= r || lateral <= -r) continue
+                // Tangente do lado mais curto (maior alinhamento com o rumo atual).
+                val t1x = -py / pd
+                val t1y = px / pd
+                val useT1 = t1x * dirX + t1y * dirY >= 0f
+                val tanX = if (useT1) t1x else -t1x
+                val tanY = if (useT1) t1y else -t1y
+                val w = (1f - (pd - r) / config.avoidLookahead).coerceIn(0f, 1f)
+                dirX += (tanX - dirX) * w
+                dirY += (tanY - dirY) * w
+            }
+            val len = sqrt(dirX * dirX + dirY * dirY)
+            if (len > 1e-4f) { dirX /= len; dirY /= len }
+        }
+        units.x[i] = x + dirX * speed
+        units.y[i] = y + dirY * speed
         return false
+    }
+
+    /** Deriva "viva" em torno do ponto de repouso (AJ-02/AJ-11): ruído suave + mola + amortecimento. */
+    private fun drift(i: Int) {
+        var vx = units.driftX[i] * config.driftDamping + (rng.nextFloat() - 0.5f) * config.driftAccel
+        var vy = units.driftY[i] * config.driftDamping + (rng.nextFloat() - 0.5f) * config.driftAccel
+        vx += (units.targetX[i] - units.x[i]) * config.driftSpring
+        vy += (units.targetY[i] - units.y[i]) * config.driftSpring
+        units.driftX[i] = vx
+        units.driftY[i] = vy
+        units.x[i] += vx
+        units.y[i] += vy
     }
 
     private fun arrive(i: Int, p: Planet) {
@@ -372,7 +456,7 @@ class Simulation(
             result == REFUSED -> enterOrbit(i, p)
             result == 0 -> kill(i)
             // Excedente: segue com a ordem e é absorvido de novo no próximo tick
-            // (ou fica parado se o planeta foi destruído e as ordens canceladas).
+            // (ou vai para o centro se o planeta acabou de ser destruído).
             else -> setPower(i, result)
         }
     }
@@ -436,17 +520,23 @@ class Simulation(
         p.growth = if (p.level == p.maxLevel) 0 else p.growth - cost
     }
 
-    /** Planeta destruído: volta ao nível 0 e mantém o dono; ordens contra ele são canceladas. ref: MECH-002, LAC-006 */
+    /**
+     * Planeta destruído: volta ao nível 0 e mantém o dono. As unidades que o tinham como alvo seguem
+     * até o **centro** dele e ficam ali em nuvem (AJ-05, observado no original). ref: MECH-002, LAC-006
+     */
     private fun destroy(p: Planet) {
         events.add(SimEvents.DESTROYED, p.x, p.y, p.owner)
         p.level = 0
         p.growth = 0
         p.health = 0
+        var count = 0
         for (i in 0 until units.highWater) {
             if (units.alive[i] && units.mode[i] == MODE_MOVE_PLANET && units.targetPlanet[i] == p.id) {
-                units.mode[i] = MODE_HOLD
+                if (count == selection.size) selection = selection.copyOf(count * 2)
+                selection[count++] = i
             }
         }
+        sendToCloud(selection, count, p.x, p.y)
     }
 
     // ---- fim de partida (R7) ----

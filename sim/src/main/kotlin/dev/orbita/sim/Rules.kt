@@ -25,13 +25,20 @@ data class SimConfig(
     val productionEnabled: Boolean = true,
     val planetBaseRadius: Float = 40f,         // design
     val unitSpeed: Float = 150f,               // design
-    val orbitGap: Float = 14f,                 // design
+    val orbitGap: Float = 30f,                 // design: órbita afastada, planeta pequeno dentro do anel (AJ-07)
     val orbitJitter: Float = 10f,              // design
     val orbitSpeed: Float = 45f,               // design (velocidade tangencial)
     val arriveMargin: Float = 4f,              // design
     val engageRange: Float = 120f,             // design
     val clashBase: Float = 6f,                 // design: alcance de choque = clashBase·√power
     val scanPeriodTicks: Int = 4,              // D14; potência de 2
+    val speedVariation: Float = 0.12f,         // design: ±12% por unidade (AJ-09)
+    val avoidMargin: Float = 10f,              // design: folga do desvio de planetas (AJ-03)
+    val avoidLookahead: Float = 70f,           // design: distância em que o desvio começa
+    val cloudSpread: Float = 5f,               // design: raio da nuvem = cloudSpread·√n (AJ-11)
+    val driftAccel: Float = 0.12f,             // design: ruído da deriva parada (AJ-02); ref: MECH-006 (ruído em BasicMovement)
+    val driftSpring: Float = 0.004f,           // design: retorno ao ponto de repouso
+    val driftDamping: Float = 0.94f,           // design
 ) {
     init {
         require(scanPeriodTicks > 0 && scanPeriodTicks and (scanPeriodTicks - 1) == 0) { "scanPeriodTicks deve ser potência de 2" }

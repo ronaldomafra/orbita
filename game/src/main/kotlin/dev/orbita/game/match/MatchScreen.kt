@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.viewport.FitViewport
@@ -20,19 +21,22 @@ import dev.orbita.sim.SimEvents
 import dev.orbita.sim.Simulation
 import dev.orbita.sim.StandardMaps
 import dev.orbita.sim.Target
+import dev.orbita.sim.UnitStore
 import ktx.app.KtxScreen
 import ktx.app.clearScreen
 import kotlin.math.sqrt
 
 /**
- * Partida single player: o jogador é a facção 0 e as facções 1..3 são bots (F6.4).
+ * Partida single player: o jogador é a facção 0 e as facções 1..3 são bots.
  * A simulação avança em passo fixo; a renderização interpola entre o tick anterior e o atual.
+ * As órbitas são desenhadas em perspectiva (elipse inclinada); a simulação continua 2D.
  */
 class MatchScreen(
     private val seed: Long = System.nanoTime(),
     private var debugAi: Boolean = false,
     /** > 0 substitui as unidades iniciais de cada base (teste de estresse). */
     private val startUnitsOverride: Int = 0,
+    theme: NebulaTheme = NebulaTheme.DEEP_VIOLET,
 ) : KtxScreen, MatchInput.Listener {
 
     private var sim = newSimulation()
@@ -44,29 +48,29 @@ class MatchScreen(
     private val batch = SpriteBatch(8191)
     private val shapes = ShapeRenderer()
     private val textures = Textures()
+    private val backdrop = Backdrop(theme, textures, sim.map.width, sim.map.height)
     private val font = BitmapFont().apply { data.setScale(1.6f) }
     private val tint = Color()
     private val particles = Particles(textures)
-    private val nebula = Nebula.render(NebulaTheme.DEEP_VIOLET)
+    private val input = MatchInput(viewport, camera, sim.map.width, sim.map.height, this)
     private var time = 0f
 
-    // Fundo: estrelas fixas (seed própria, só visual).
-    private val starX = FloatArray(STARS)
-    private val starY = FloatArray(STARS)
-    private val starSize = FloatArray(STARS)
-    private val starAlpha = FloatArray(STARS)
-
-    // Posições do tick anterior, para interpolação.
+    // Posições do tick anterior, para interpolação e para a direção dos cometas.
     private var prevX = FloatArray(0)
     private var prevY = FloatArray(0)
     private var prevAlive = BooleanArray(0)
     private var accumulator = 0f
+
+    // Posição de desenho de cada unidade (após interpolação e projeção da órbita).
+    private var drawX = FloatArray(0)
+    private var drawY = FloatArray(0)
 
     // Seleção (círculo em coordenadas de mundo) e pré-visualização do laço.
     private var selectionActive = false
     private var selX = 0f
     private var selY = 0f
     private var selR = 0f
+    private var selectedPlanet = -1
     private var lassoActive = false
     private var lassoX = 0f
     private var lassoY = 0f
@@ -84,14 +88,7 @@ class MatchScreen(
     private var fps = 0
 
     init {
-        val rnd = java.util.Random(7)
-        for (k in 0 until STARS) {
-            starX[k] = rnd.nextFloat() * sim.map.width
-            starY[k] = rnd.nextFloat() * sim.map.height
-            starSize[k] = 3f + rnd.nextFloat() * rnd.nextFloat() * 9f
-            starAlpha[k] = 0.15f + rnd.nextFloat() * 0.55f
-        }
-        Gdx.input.inputProcessor = MatchInput(viewport, camera, sim.map.width, sim.map.height, this)
+        Gdx.input.inputProcessor = input
     }
 
     private fun newSimulation(): Simulation {
@@ -123,9 +120,10 @@ class MatchScreen(
         val alpha = accumulator / STEP
         time += delta
         particles.update(delta)
+        input.update(delta)
         if (orderFxTime > 0f) orderFxTime -= delta
 
-        clearScreen(Palette.background.r, Palette.background.g, Palette.background.b)
+        clearScreen(0f, 0f, 0f)
         viewport.apply()
         camera.update()
         drawWorld(alpha)
@@ -150,67 +148,55 @@ class MatchScreen(
     private fun drawWorld(alpha: Float) {
         batch.projectionMatrix = camera.combined
         batch.begin()
-        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
-        drawBackground()
+        backdrop.draw(batch, time)
+        computeDrawPositions(alpha)
 
-        // Coroas pulsantes (aditivo).
+        // Coroas (aditivo) só para planetas ativos; trilhas de órbita discretas (AJ-07/AJ-16).
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
         for (p in sim.planets) {
+            if (p.level < 1) continue
             val r = sim.config.planetRadius(p.level)
-            val pulse = 1f + 0.06f * MathUtils.sin(time * 1.6f + p.id * 1.7f)
-            val strength = when {
-                p.level >= 1 -> 0.5f
-                p.owner != NO_FACTION -> 0.18f
-                else -> 0.05f
-            }
-            batch.setColor(Palette.of(p.owner).withAlpha(strength))
-            draw(textures.softGlow, p.x, p.y, r * 6f * pulse)
+            val pulse = 1f + 0.05f * MathUtils.sin(time * 1.4f + p.id * 1.7f)
+            batch.setColor(Palette.of(p.owner).withAlpha(0.32f))
+            draw(textures.softGlow, p.x, p.y, r * 4.6f * pulse)
+            val orbit = orbitRadius(p)
+            batch.setColor(0.55f, 0.6f, 0.7f, 0.10f)
+            drawEllipse(textures.ring, p.x, p.y, orbit - 6f, ORBIT_TILT)
+            drawEllipse(textures.ring, p.x, p.y, orbit + 6f, ORBIT_TILT)
         }
+        drawSelectionDisc()
+
+        // Unidades atrás do planeta (metade de cima do anel inclinado).
+        drawUnits(behind = true)
 
         // Esferas (normal) e borda acesa (aditivo).
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
         for (p in sim.planets) {
-            val r = sim.config.planetRadius(p.level)
+            val r = sphereRadius(p)
             val c = Palette.of(p.owner)
             when {
-                p.level >= 1 -> batch.setColor(lerp(c.r, 1f, 0.12f), lerp(c.g, 1f, 0.12f), lerp(c.b, 1f, 0.12f), 1f)
-                p.owner != NO_FACTION -> batch.setColor(c.r * 0.45f, c.g * 0.45f, c.b * 0.45f, 1f)
-                else -> batch.setColor(0.27f, 0.30f, 0.37f, 1f)
+                p.level >= 1 -> batch.setColor(lerp(c.r, 1f, 0.1f), lerp(c.g, 1f, 0.1f), lerp(c.b, 1f, 0.1f), 1f)
+                p.owner != NO_FACTION -> batch.setColor(c.r * 0.4f + 0.2f, c.g * 0.4f + 0.2f, c.b * 0.4f + 0.2f, 1f)
+                else -> batch.setColor(0.78f, 0.80f, 0.84f, 1f) // neutro: cinza claro, sem brilho (AJ-16)
             }
             draw(textures.sphere, p.x, p.y, r * 2f)
         }
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
         for (p in sim.planets) {
-            val r = sim.config.planetRadius(p.level)
+            if (p.level < 1) continue
+            val r = sphereRadius(p)
             val c = Palette.of(p.owner)
-            batch.setColor(c.withAlpha(if (p.level >= 1) 0.7f else 0.25f))
-            draw(textures.ring, p.x, p.y, r * 2.12f)
+            batch.setColor(c.withAlpha(0.55f))
+            draw(textures.ring, p.x, p.y, r * 2.1f)
             // Pontos de nível abaixo do planeta: acesos até o nível atual.
             for (lv in 1..p.maxLevel) {
                 batch.setColor(c.withAlpha(if (lv <= p.level) 1f else 0.25f))
-                draw(textures.spark, p.x + (lv - (p.maxLevel + 1) / 2f) * 13f, p.y - r - 12f, 14f)
+                draw(textures.spark, p.x + (lv - (p.maxLevel + 1) / 2f) * 12f, p.y - orbitRadius(p) * ORBIT_TILT - 14f, 12f)
             }
         }
 
-        // Unidades: halo colorido + núcleo branco (aditivo), interpoladas.
-        val u = sim.units
-        val sel2 = selR * selR
-        for (i in 0 until u.highWater) {
-            if (!u.alive[i]) continue
-            val x = if (i < prevAlive.size && prevAlive[i]) prevX[i] + (u.x[i] - prevX[i]) * alpha else u.x[i]
-            val y = if (i < prevAlive.size && prevAlive[i]) prevY[i] + (u.y[i] - prevY[i]) * alpha else u.y[i]
-            val scale = sqrt(u.power[i].toFloat())
-            var selected = false
-            if (selectionActive && u.owner[i] == PLAYER) {
-                val dx = u.x[i] - selX
-                val dy = u.y[i] - selY
-                selected = dx * dx + dy * dy <= sel2
-            }
-            val c = Palette.of(u.owner[i])
-            batch.setColor(c.r, c.g, c.b, 0.85f)
-            draw(textures.glow, x, y, UNIT_SIZE * scale * (if (selected) 1.5f else 1f))
-            batch.setColor(1f, 1f, 1f, if (selected) 1f else 0.75f)
-            draw(textures.spark, x, y, UNIT_CORE * scale)
-        }
+        // Unidades na frente do planeta, paradas e em trânsito (cometas).
+        drawUnits(behind = false)
 
         particles.draw(batch)
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
@@ -219,18 +205,110 @@ class MatchScreen(
         drawOverlays()
     }
 
-    /** Nebulosa pré-renderizada (1 quad) + estrelas. O tema muda por fase. */
-    private fun drawBackground() {
-        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
-        batch.setColor(1f, 1f, 1f, 1f)
-        batch.draw(nebula, 0f, 0f, sim.map.width, sim.map.height)
-        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
-        for (k in starX.indices) {
-            val twinkle = 0.75f + 0.25f * MathUtils.sin(time * 0.8f + k)
-            batch.setColor(0.75f, 0.82f, 1f, starAlpha[k] * twinkle)
-            draw(textures.spark, starX[k], starY[k], starSize[k])
+    /** Interpola e projeta: unidades em órbita são desenhadas no anel inclinado (AJ-07). */
+    private fun computeDrawPositions(alpha: Float) {
+        val u = sim.units
+        if (drawX.size < u.capacity) {
+            drawX = drawX.copyOf(u.capacity)
+            drawY = drawY.copyOf(u.capacity)
+        }
+        for (i in 0 until u.highWater) {
+            if (!u.alive[i]) continue
+            val interpolate = i < prevAlive.size && prevAlive[i]
+            var x = if (interpolate) prevX[i] + (u.x[i] - prevX[i]) * alpha else u.x[i]
+            var y = if (interpolate) prevY[i] + (u.y[i] - prevY[i]) * alpha else u.y[i]
+            if (u.mode[i] == UnitStore.MODE_ORBIT && u.lock[i] < 0) {
+                val p = sim.planets[u.home[i]]
+                val ox = x - p.x
+                val oy = (y - p.y) * ORBIT_TILT
+                if (p.id == selectedPlanet && selectionActive) {
+                    // "Átomo": dois planos inclinados que se cruzam quando o planeta está selecionado (AJ-07).
+                    val c = ATOM_COS
+                    val s = if (i and 1 == 0) ATOM_SIN else -ATOM_SIN
+                    x = p.x + ox * c - oy * s
+                    y = p.y + ox * s + oy * c
+                } else {
+                    x = p.x + ox
+                    y = p.y + oy
+                }
+            }
+            drawX[i] = x
+            drawY[i] = y
         }
     }
+
+    private fun drawUnits(behind: Boolean) {
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
+        val u = sim.units
+        val sel2 = selR * selR
+        for (i in 0 until u.highWater) {
+            if (!u.alive[i]) continue
+            val orbiting = u.mode[i] == UnitStore.MODE_ORBIT && u.lock[i] < 0
+            // Atrás = metade de cima do anel em órbita (o "y" simulado acima do planeta).
+            val isBehind = orbiting && u.y[i] > sim.planets[u.home[i]].y
+            if (isBehind != behind) continue
+
+            val x = drawX[i]
+            val y = drawY[i]
+            val scale = sqrt(u.power[i].toFloat())
+            var selected = false
+            if (selectionActive && u.owner[i] == PLAYER) {
+                val dx = u.x[i] - selX
+                val dy = u.y[i] - selY
+                selected = dx * dx + dy * dy <= sel2
+            }
+            val c = Palette.of(u.owner[i])
+            val dim = if (isBehind) 0.6f else 1f
+
+            // Cometa: rastro alongado na direção do movimento (AJ-12).
+            val moving = u.mode[i] == UnitStore.MODE_MOVE_POINT || u.mode[i] == UnitStore.MODE_MOVE_PLANET || u.lock[i] >= 0
+            if (moving && i < prevAlive.size && prevAlive[i]) {
+                val vx = u.x[i] - prevX[i]
+                val vy = u.y[i] - prevY[i]
+                val speed = sqrt(vx * vx + vy * vy)
+                if (speed > 0.6f) {
+                    val len = UNIT_SIZE * scale + speed * COMET_LENGTH
+                    val width = UNIT_SIZE * scale * 0.55f
+                    val angle = MathUtils.atan2(vy, vx) * MathUtils.radiansToDegrees
+                    batch.setColor(c.r, c.g, c.b, 0.75f)
+                    // A cabeça fica na posição da unidade; o rastro se estende para trás.
+                    batch.draw(textures.glow, x - len + width / 2, y - width / 2, len - width / 2, width / 2, len, width, 1f, 1f, angle)
+                }
+            }
+            if (selected) {
+                batch.setColor(1f, 1f, 1f, 0.95f * dim) // unidades selecionadas ficam brancas (AJ-06)
+                draw(textures.glow, x, y, UNIT_SIZE * scale * 1.15f)
+            } else {
+                batch.setColor(c.r, c.g, c.b, 0.85f * dim)
+                draw(textures.glow, x, y, UNIT_SIZE * scale)
+            }
+            batch.setColor(1f, 1f, 1f, 0.8f * dim)
+            draw(textures.spark, x, y, UNIT_CORE * scale)
+        }
+    }
+
+    /** Seleção: disco translúcido na cor do jogador com aro aceso (AJ-06). Também usado no laço. */
+    private fun drawSelectionDisc() {
+        val active = lassoActive || selectionActive
+        if (!active) return
+        val x = if (lassoActive) lassoX else selX
+        val y = if (lassoActive) lassoY else selY
+        val r = if (lassoActive) lassoR else selR
+        val c = Palette.of(PLAYER)
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
+        batch.setColor(c.r * 0.35f, c.g * 0.45f, c.b, if (lassoActive) 0.22f else 0.32f)
+        draw(textures.disc, x, y, r * 2f)
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
+        batch.setColor(c.r, c.g, c.b, 0.9f)
+        draw(textures.ring, x, y, r * 2f / 0.92f)
+    }
+
+    private fun orbitRadius(p: Planet): Float =
+        sim.config.planetRadius(p.level) + sim.config.orbitGap + sim.config.orbitJitter / 2
+
+    /** Raio desenhado da esfera: neutros ficam menores (AJ-16). */
+    private fun sphereRadius(p: Planet): Float =
+        sim.config.planetRadius(p.level) * (if (p.level >= 1) 0.8f else 0.55f)
 
     /** Converte eventos do tick em efeitos. */
     private fun consumeEvents() {
@@ -238,14 +316,14 @@ class MatchScreen(
         for (k in 0 until e.count) {
             val c = Palette.of(e.faction[k])
             when (e.type[k]) {
-                SimEvents.CLASH -> particles.spark(e.x[k], e.y[k], c, 2)
+                SimEvents.DEATH -> particles.death(e.x[k], e.y[k], c, e.amount[k])
                 SimEvents.CAPTURE -> {
                     particles.ring(e.x[k], e.y[k], c, 40f, 260f, 0.8f)
                     particles.flash(e.x[k], e.y[k], c, 220f, 0.5f)
                 }
                 SimEvents.LEVEL_UP -> particles.ring(e.x[k], e.y[k], Color.WHITE, 60f, 200f, 0.6f)
                 SimEvents.DESTROYED -> {
-                    particles.flash(e.x[k], e.y[k], c, 260f, 0.6f)
+                    particles.flash(e.x[k], e.y[k], c, 300f, 0.7f)
                     particles.spark(e.x[k], e.y[k], c, 24)
                 }
             }
@@ -259,26 +337,19 @@ class MatchScreen(
         shapes.projectionMatrix = camera.combined
         shapes.begin(ShapeRenderer.ShapeType.Line)
         for (p in sim.planets) {
-            val r = sim.config.planetRadius(p.level)
+            val r = sphereRadius(p)
             val c = Palette.of(p.owner)
             if (p.level >= 1) {
                 val max = Rules.maxHealth(p.level)
                 if (p.health < max) {
                     shapes.color = c
-                    arc(p.x, p.y, r + 2f, p.health / max.toFloat())
+                    arc(p.x, p.y, r + 4f, p.health / max.toFloat())
                 }
             }
             if (p.growth > 0) {
                 shapes.color = if (p.level == 0) c else Color.WHITE
-                arc(p.x, p.y, r + 10f + p.maxLevel * 6f, p.growth / Rules.growthCost(p.level).toFloat())
+                arc(p.x, p.y, r + 10f, p.growth / Rules.growthCost(p.level).toFloat())
             }
-        }
-        if (lassoActive) {
-            shapes.setColor(1f, 1f, 1f, 0.6f)
-            shapes.circle(lassoX, lassoY, lassoR, 64)
-        } else if (selectionActive) {
-            shapes.color = Palette.of(PLAYER).withAlpha(0.5f)
-            shapes.circle(selX, selY, selR, 64)
         }
         if (orderFxTime > 0f) {
             val t = 1f - orderFxTime / ORDER_FX_SECONDS
@@ -362,8 +433,15 @@ class MatchScreen(
         }
     }
 
-    private fun draw(texture: com.badlogic.gdx.graphics.g2d.TextureRegion, cx: Float, cy: Float, size: Float) {
+    private fun draw(texture: TextureRegion, cx: Float, cy: Float, size: Float) {
         batch.draw(texture, cx - size / 2, cy - size / 2, size, size)
+    }
+
+    /** Anel achatado verticalmente (órbita vista em perspectiva). */
+    private fun drawEllipse(texture: TextureRegion, cx: Float, cy: Float, radius: Float, squash: Float) {
+        val w = radius * 2f / 0.92f
+        val h = w * squash
+        batch.draw(texture, cx - w / 2, cy - h / 2, w, h)
     }
 
     private fun Color.withAlpha(a: Float): Color = tint.set(r, g, b, a)
@@ -385,6 +463,7 @@ class MatchScreen(
 
     override fun onLasso(centerX: Float, centerY: Float, radius: Float, finished: Boolean) {
         if (isGameOver()) return
+        selectedPlanet = -1
         if (finished) {
             lassoActive = false
             selectionActive = radius > MIN_SELECTION_RADIUS
@@ -413,10 +492,12 @@ class MatchScreen(
             orderFxX = planet?.x ?: worldX
             orderFxY = planet?.y ?: worldY
             selectionActive = false
+            selectedPlanet = -1
         } else if (doubleTap && planet != null && planet.owner == PLAYER) {
             selectionActive = true
+            selectedPlanet = planet.id
             selX = planet.x; selY = planet.y
-            selR = sim.config.planetRadius(planet.level) + sim.config.orbitGap + sim.config.orbitJitter + 12f
+            selR = orbitRadius(planet) + sim.config.orbitJitter + 14f
         }
     }
 
@@ -440,6 +521,7 @@ class MatchScreen(
         bots = BotDriver.standard(sim, seed)
         prevX = FloatArray(0); prevY = FloatArray(0); prevAlive = BooleanArray(0)
         selectionActive = false
+        selectedPlanet = -1
         lassoActive = false
         accumulator = 0f
     }
@@ -453,7 +535,7 @@ class MatchScreen(
         batch.dispose()
         shapes.dispose()
         textures.dispose()
-        nebula.dispose()
+        backdrop.dispose()
         font.dispose()
     }
 
@@ -465,10 +547,15 @@ class MatchScreen(
         private const val MAX_STEPS_PER_FRAME = 4
         private const val UNIT_SIZE = 15f
         private const val UNIT_CORE = 5.5f
-        private const val STARS = 260
+        private const val COMET_LENGTH = 7f
         private const val TAP_MARGIN = 30f
         private const val MIN_SELECTION_RADIUS = 12f
         private const val ORDER_FX_SECONDS = 0.5f
         private const val ARC_SEGMENTS = 48
+
+        /** Achatamento vertical da órbita em perspectiva (AJ-07). */
+        private const val ORBIT_TILT = 0.38f
+        private val ATOM_COS = MathUtils.cosDeg(38f)
+        private val ATOM_SIN = MathUtils.sinDeg(38f)
     }
 }

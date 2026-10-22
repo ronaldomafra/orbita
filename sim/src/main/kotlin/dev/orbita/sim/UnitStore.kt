@@ -30,6 +30,11 @@ class UnitStore(initialCapacity: Int = 1024) {
     var orbitSin = FloatArray(capacity); private set
     /** Inimigo travado (trava mútua) ou -1. */
     var lock = IntArray(capacity); private set
+    /** Multiplicador individual de velocidade (enxame se alonga em fluxo; AJ-09). */
+    var speedFactor = FloatArray(capacity); private set
+    /** Velocidade da deriva "viva" quando parada (AJ-02/AJ-11). */
+    var driftX = FloatArray(capacity); private set
+    var driftY = FloatArray(capacity); private set
 
     private var freeSlots = IntArray(capacity)
     private var freeCount = 0
@@ -44,6 +49,9 @@ class UnitStore(initialCapacity: Int = 1024) {
         home[slot] = -1
         targetPlanet[slot] = -1
         mode[slot] = MODE_HOLD
+        speedFactor[slot] = 1f
+        driftX[slot] = 0f
+        driftY[slot] = 0f
         return slot
     }
 
@@ -70,11 +78,14 @@ class UnitStore(initialCapacity: Int = 1024) {
         orbitCos = orbitCos.copyOf(capacity)
         orbitSin = orbitSin.copyOf(capacity)
         lock = lock.copyOf(capacity)
+        speedFactor = speedFactor.copyOf(capacity)
+        driftX = driftX.copyOf(capacity)
+        driftY = driftY.copyOf(capacity)
         freeSlots = freeSlots.copyOf(capacity)
     }
 
     companion object {
-        /** Parada no lugar (ordem cumprida ou cancelada). */
+        /** Parada em torno do ponto de repouso (targetX/targetY), com deriva suave. */
         const val MODE_HOLD = 0
         /** Orbitando [home]. */
         const val MODE_ORBIT = 1

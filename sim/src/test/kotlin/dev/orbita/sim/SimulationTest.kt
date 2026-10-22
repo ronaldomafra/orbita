@@ -2,6 +2,7 @@ package dev.orbita.sim
 
 import dev.orbita.sim.UnitStore.Companion.MODE_HOLD
 import dev.orbita.sim.UnitStore.Companion.MODE_ORBIT
+import kotlin.math.hypot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -60,7 +61,51 @@ class SimulationTest {
         assertEquals(0, p.health)
         val attacker = sim.aliveUnits(0).single()
         assertEquals(30, sim.units.power[attacker])
-        assertEquals(MODE_HOLD, sim.units.mode[attacker], "ordem cancelada após a destruição")
+        // AJ-05: após destruir, a unidade vai até o centro do planeta e fica ali.
+        assertEquals(MODE_HOLD, sim.units.mode[attacker])
+        val d = hypot(sim.units.x[attacker] - p.x, sim.units.y[attacker] - p.y)
+        assertTrue(d < 15f, "deveria estar no centro do planeta destruído (distância $d)")
+    }
+
+    @Test
+    fun `T-12 unidades contornam planeta ativo e atravessam planeta sem dono`() {
+        fun minDistance(level: Int, owner: Int): Float {
+            val sim = Simulation(map(PlanetDef(500f, 300f, maxLevel = 2, owner = owner, level = level)), seed = 1, config = noProduction)
+            sim.addUnit(owner = 0, power = 1, x = 300f, y = 300f)
+            sim.submit(SendUnits(0, 300f, 300f, 5f, Target.Point(700f, 300f)))
+            var min = Float.MAX_VALUE
+            repeat(300) {
+                sim.step()
+                val u = sim.aliveUnits(0).single()
+                min = minOf(min, hypot(sim.units.x[u] - 500f, sim.units.y[u] - 300f))
+            }
+            val u = sim.aliveUnits(0).single()
+            assertTrue(hypot(sim.units.x[u] - 700f, sim.units.y[u] - 300f) < 10f, "deveria chegar ao destino")
+            return min
+        }
+        val radius = SimConfig().planetRadius(1)
+        assertTrue(minDistance(level = 1, owner = 1) >= radius, "não pode atravessar planeta ativo")
+        assertTrue(minDistance(level = 0, owner = NO_FACTION) < radius, "planeta sem dono não bloqueia")
+    }
+
+    @Test
+    fun `T-13 enxame parado forma nuvem viva em torno do ponto`() {
+        val sim = Simulation(map(), seed = 1, config = noProduction)
+        repeat(100) { sim.addUnit(owner = 0, power = 1, x = 200f, y = 300f) }
+        sim.submit(SendUnits(0, 200f, 300f, 5f, Target.Point(600f, 300f)))
+        sim.run(400)
+        val ids = sim.aliveUnits(0)
+        val xs = ids.map { sim.units.x[it] }
+        val ys = ids.map { sim.units.y[it] }
+        val cx = xs.average()
+        val cy = ys.average()
+        assertTrue(hypot((cx - 600).toFloat(), (cy - 300).toFloat()) < 8f, "nuvem centrada no ponto")
+        val spread = ids.maxOf { hypot(sim.units.x[it] - 600f, sim.units.y[it] - 300f) }
+        assertTrue(spread in 20f..90f, "nuvem com raio ~5·√100 (obtido $spread)")
+        val before = ids.map { sim.units.x[it] to sim.units.y[it] }
+        sim.run(60)
+        val moved = ids.indices.count { k -> before[k] != (sim.units.x[ids[k]] to sim.units.y[ids[k]]) }
+        assertEquals(ids.size, moved, "todas as unidades paradas continuam se mexendo")
     }
 
     @Test

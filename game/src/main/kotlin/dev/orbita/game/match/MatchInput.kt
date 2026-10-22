@@ -13,6 +13,7 @@ import kotlin.math.hypot
  * - 1 dedo / botão esquerdo arrastando: laço circular de seleção (centro = início, raio = distância);
  * - toque: [Listener.onTap] (ordem, ou seleção por toque duplo);
  * - 2 dedos: pan + pinça; no desktop, botão direito arrastando = pan e roda = zoom.
+ * A câmera pode passar das bordas com resistência e volta sozinha ao soltar (AJ-01); zoom de 0,45× a 2,2× (AJ-10).
  */
 class MatchInput(
     private val viewport: Viewport,
@@ -150,23 +151,56 @@ class MatchInput(
         lastMidX = midX; lastMidY = midY
     }
 
+    /** Pan com resistência fora da área "de repouso" (sensação de espaço infinito com mola; AJ-01). */
     private fun panBy(dxScreen: Float, dyScreen: Float) {
         val scale = camera.zoom * viewport.worldWidth / viewport.screenWidth
-        camera.position.x -= dxScreen * scale
-        camera.position.y += dyScreen * scale
-        clampCamera()
+        val outside = softOffsetX() != 0f || softOffsetY() != 0f
+        val resistance = if (outside) OUTSIDE_RESISTANCE else 1f
+        camera.position.x -= dxScreen * scale * resistance
+        camera.position.y += dyScreen * scale * resistance
+        hardClamp()
     }
 
     private fun zoomBy(factor: Float) {
-        camera.zoom = (camera.zoom * factor).coerceIn(MIN_ZOOM, 1f)
-        clampCamera()
+        camera.zoom = (camera.zoom * factor).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        hardClamp()
     }
 
-    private fun clampCamera() {
-        val halfW = viewport.worldWidth * camera.zoom / 2
-        val halfH = viewport.worldHeight * camera.zoom / 2
-        camera.position.x = camera.position.x.coerceIn(halfW, worldWidth - halfW)
-        camera.position.y = camera.position.y.coerceIn(halfH, worldHeight - halfH)
+    /** Chamar a cada frame: sem dedos na tela, a câmera volta suavemente para a área de repouso. */
+    fun update(delta: Float) {
+        if (activePointers() > 0) return
+        val k = (RETURN_RATE * delta).coerceAtMost(1f)
+        val ox = softOffsetX()
+        val oy = softOffsetY()
+        if (ox == 0f && oy == 0f) return
+        camera.position.x -= ox * k
+        camera.position.y -= oy * k
+        camera.update()
+    }
+
+    /** Quanto o centro da câmera está além da área de repouso no eixo X (0 = dentro). */
+    private fun softOffsetX(): Float = offset(camera.position.x, viewport.worldWidth * camera.zoom / 2, worldWidth)
+
+    private fun softOffsetY(): Float = offset(camera.position.y, viewport.worldHeight * camera.zoom / 2, worldHeight)
+
+    private fun offset(center: Float, half: Float, size: Float): Float {
+        val (lo, hi) = if (2 * half >= size) size / 2 - SOFT_MARGIN to size / 2 + SOFT_MARGIN
+        else half - SOFT_MARGIN to size - half + SOFT_MARGIN
+        return when {
+            center < lo -> center - lo
+            center > hi -> center - hi
+            else -> 0f
+        }
+    }
+
+    /** Limite rígido: no máximo meia tela além da área de repouso. */
+    private fun hardClamp() {
+        val ox = softOffsetX()
+        val oy = softOffsetY()
+        val maxX = viewport.worldWidth * camera.zoom * HARD_EXTRA
+        val maxY = viewport.worldHeight * camera.zoom * HARD_EXTRA
+        if (ox > maxX) camera.position.x -= ox - maxX else if (ox < -maxX) camera.position.x -= ox + maxX
+        if (oy > maxY) camera.position.y -= oy - maxY else if (oy < -maxY) camera.position.y -= oy + maxY
         camera.update()
     }
 
@@ -190,5 +224,10 @@ class MatchInput(
         private const val DOUBLE_TAP_MS = 320L
         private const val DOUBLE_TAP_PX = 60f
         private const val MIN_ZOOM = 0.45f
+        private const val MAX_ZOOM = 2.2f
+        private const val SOFT_MARGIN = 120f
+        private const val HARD_EXTRA = 0.5f
+        private const val OUTSIDE_RESISTANCE = 0.45f
+        private const val RETURN_RATE = 6f
     }
 }
