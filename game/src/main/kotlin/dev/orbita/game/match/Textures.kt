@@ -31,12 +31,16 @@ class Textures : Disposable {
     /** Brilho concentrado: núcleo intenso com queda rápida (pontos de luz). */
     val spark: TextureRegion
 
+    /** Brilho gaussiano bem suave (coroas dos planetas). */
+    val softGlow: TextureRegion
+
     init {
         val pixmap = Pixmap(ATLAS_W, ATLAS_H, Pixmap.Format.RGBA8888).apply { blending = Pixmap.Blending.None }
         paint(pixmap, 0, 0, 128) { nx, ny -> sphereTexel(nx, ny) }
         paint(pixmap, 128 + PAD, 0, 128) { nx, ny -> radialTexel(nx, ny) { d -> (1f - abs(d - 0.92f) * 22f).coerceIn(0f, 1f) } }
         paint(pixmap, 256 + 2 * PAD, 0, 64) { nx, ny -> radialTexel(nx, ny) { d -> (1f - d).coerceIn(0f, 1f).let { it * it } } }
         paint(pixmap, 256 + 2 * PAD, 64 + PAD, 32) { nx, ny -> radialTexel(nx, ny) { d -> (1f - d).coerceIn(0f, 1f).pow(3) } }
+        paint(pixmap, 320 + 3 * PAD, 0, 128) { nx, ny -> radialTexel(nx, ny) { d -> (kotlin.math.exp(-d * d * 4.5f) * (1f - d)).coerceIn(0f, 1f) } }
         atlas = Texture(pixmap).apply { setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear) }
         pixmap.dispose()
 
@@ -44,6 +48,7 @@ class Textures : Disposable {
         ring = TextureRegion(atlas, 128 + PAD, 0, 128, 128)
         glow = TextureRegion(atlas, 256 + 2 * PAD, 0, 64, 64)
         spark = TextureRegion(atlas, 256 + 2 * PAD, 64 + PAD, 32, 32)
+        softGlow = TextureRegion(atlas, 320 + 3 * PAD, 0, 128, 128)
     }
 
     /** Preenche um quadrado [size]×[size] em (ox, oy) com `texel(nx, ny)` em coordenadas normalizadas [-1, 1]. */

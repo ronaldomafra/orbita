@@ -39,7 +39,8 @@ data class SimConfig(
 
     val speedPerTick: Float get() = unitSpeed / tickHz
 
-    fun planetRadius(level: Int): Float = planetBaseRadius * max(level, 1)
+    /** design: +30% por nível (a referência dobra o raio por nível, o que fica grande demais no nosso mapa). */
+    fun planetRadius(level: Int): Float = planetBaseRadius * (1f + 0.3f * (max(level, 1) - 1))
 
     fun clashDistance(power: Int): Float = clashBase * sqrt(power.toFloat())
 }

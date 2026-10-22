@@ -31,6 +31,8 @@ import kotlin.math.sqrt
 class MatchScreen(
     private val seed: Long = System.nanoTime(),
     private var debugAi: Boolean = false,
+    /** > 0 substitui as unidades iniciais de cada base (teste de estresse). */
+    private val startUnitsOverride: Int = 0,
 ) : KtxScreen, MatchInput.Listener {
 
     private var sim = newSimulation()
@@ -45,6 +47,7 @@ class MatchScreen(
     private val font = BitmapFont().apply { data.setScale(1.6f) }
     private val tint = Color()
     private val particles = Particles(textures)
+    private val nebula = Nebula.render(NebulaTheme.DEEP_VIOLET)
     private var time = 0f
 
     // Fundo: estrelas fixas (seed própria, só visual).
@@ -75,6 +78,8 @@ class MatchScreen(
     private var orderFxY = 0f
 
     private var statFrames = 0
+    private var statSimNanos = 0L
+    private val hudText = StringBuilder(32)
     private var statElapsed = 0f
     private var fps = 0
 
@@ -89,20 +94,32 @@ class MatchScreen(
         Gdx.input.inputProcessor = MatchInput(viewport, camera, sim.map.width, sim.map.height, this)
     }
 
-    private fun newSimulation() = Simulation(StandardMaps.quad4(), seed)
+    private fun newSimulation(): Simulation {
+        val base = StandardMaps.quad4()
+        val map = if (startUnitsOverride > 0) {
+            base.copy(planets = base.planets.map { if (it.owner >= 0) it.copy(startUnits = startUnitsOverride) else it })
+        } else base
+        return Simulation(map, seed)
+    }
 
     // ---- ciclo ----
 
     override fun render(delta: Float) {
         accumulator += minOf(delta, MAX_FRAME_DELTA)
+        val simStart = System.nanoTime()
         if (Gdx.input.isKeyJustPressed(Input.Keys.D)) debugAi = !debugAi
-        while (accumulator >= STEP) {
+        var steps = 0
+        while (accumulator >= STEP && steps < MAX_STEPS_PER_FRAME) {
+            steps++
             snapshotPrevious()
             bots.beforeStep()
             sim.step()
             consumeEvents()
             accumulator -= STEP
         }
+        // Sob carga extrema o jogo desacelera em vez de congelar (espiral do passo fixo).
+        if (accumulator >= STEP) accumulator = 0f
+        statSimNanos += System.nanoTime() - simStart
         val alpha = accumulator / STEP
         time += delta
         particles.update(delta)
@@ -141,12 +158,12 @@ class MatchScreen(
             val r = sim.config.planetRadius(p.level)
             val pulse = 1f + 0.06f * MathUtils.sin(time * 1.6f + p.id * 1.7f)
             val strength = when {
-                p.level >= 1 -> 0.6f
-                p.owner != NO_FACTION -> 0.2f
-                else -> 0.06f
+                p.level >= 1 -> 0.5f
+                p.owner != NO_FACTION -> 0.18f
+                else -> 0.05f
             }
             batch.setColor(Palette.of(p.owner).withAlpha(strength))
-            draw(textures.glow, p.x, p.y, r * 4.8f * pulse)
+            draw(textures.softGlow, p.x, p.y, r * 6f * pulse)
         }
 
         // Esferas (normal) e borda acesa (aditivo).
@@ -202,8 +219,12 @@ class MatchScreen(
         drawOverlays()
     }
 
-    /** Só estrelas pequenas: quads grandes (nebulosa) estouram o fill rate da GPU do A10. */
+    /** Nebulosa pré-renderizada (1 quad) + estrelas. O tema muda por fase. */
     private fun drawBackground() {
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
+        batch.setColor(1f, 1f, 1f, 1f)
+        batch.draw(nebula, 0f, 0f, sim.map.width, sim.map.height)
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
         for (k in starX.indices) {
             val twinkle = 0.75f + 0.25f * MathUtils.sin(time * 0.8f + k)
             batch.setColor(0.75f, 0.82f, 1f, starAlpha[k] * twinkle)
@@ -309,11 +330,14 @@ class MatchScreen(
         var x = 16f
         for (f in sim.factions) {
             font.color = if (f.eliminated) Color.DARK_GRAY else Palette.of(f.id)
-            val text = "${Palette.factionNames[f.id]} ${sim.totalPower(f.id)}"
-            x += font.draw(batch, text, x, top).width + 28f
+            hudText.setLength(0)
+            hudText.append(Palette.factionNames[f.id]).append(' ').append(sim.totalPower(f.id))
+            x += font.draw(batch, hudText, x, top).width + 28f
         }
         font.color = Color.GRAY
-        font.draw(batch, "$fps fps", hudViewport.worldWidth - 120f, top)
+        hudText.setLength(0)
+        hudText.append(fps).append(" fps")
+        font.draw(batch, hudText, hudViewport.worldWidth - 120f, top)
         if (debugAi) drawAiDebugText()
 
         val result = when {
@@ -349,7 +373,9 @@ class MatchScreen(
         statElapsed += delta
         if (statElapsed >= 1f) {
             fps = statFrames
-            Gdx.app.log(LOG_TAG, "fps=$fps tick=${sim.tick} units=${sim.units.highWater}")
+            val alive = (0 until sim.factions.size).sumOf { sim.unitCount(it) }
+            Gdx.app.log(LOG_TAG, "fps=$fps tick=${sim.tick} units=$alive simMsPerFrame=${statSimNanos / 1_000_000 / statFrames} heapKB=${Gdx.app.javaHeap / 1024}")
+            statSimNanos = 0
             statFrames = 0
             statElapsed = 0f
         }
@@ -427,6 +453,7 @@ class MatchScreen(
         batch.dispose()
         shapes.dispose()
         textures.dispose()
+        nebula.dispose()
         font.dispose()
     }
 
@@ -435,8 +462,9 @@ class MatchScreen(
         const val PLAYER = 0
         private const val STEP = 1f / 60f
         private const val MAX_FRAME_DELTA = 0.25f
-        private const val UNIT_SIZE = 12f
-        private const val UNIT_CORE = 4.5f
+        private const val MAX_STEPS_PER_FRAME = 4
+        private const val UNIT_SIZE = 15f
+        private const val UNIT_CORE = 5.5f
         private const val STARS = 260
         private const val TAP_MARGIN = 30f
         private const val MIN_SELECTION_RADIUS = 12f

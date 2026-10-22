@@ -11,3 +11,9 @@ dependencies {
 }
 
 application { mainClass.set("dev.orbita.arena.ArenaKt") }
+
+tasks.register<JavaExec>("leakCheck") {
+    group = "verification"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.orbita.arena.LeakCheckKt")
+}
