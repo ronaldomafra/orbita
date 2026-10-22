@@ -20,5 +20,7 @@ Plano vigente: `doc/Plano_Projeto_Orbita_v2.md` (a v1 fica só como histórico).
 ## Ambiente
 
 - ADB: `~/Android/Sdk/platform-tools/adb` (fora do PATH)
-- JDK 17 instalado; JDK 21 só se o Ghidra for necessário
+- JDK 17 no sistema; JDK 21 (Temurin) em `~/.local/share/rea/jdk-21.0.13+9` (usado pelo REA)
+- Ghidra 12.1.4: `~/.local/share/rea/ghidra_12.1.4_PUBLIC`
+- Dispositivo: Galaxy A10 (SM-A105M, serial RQ8M708HWEZ), Android 11, armeabi-v7a; aparelho de testes do usuário
 - JADX headless: `~/.local/share/rea/android/jadx-headless-mcp-0.7.1-all.jar`
