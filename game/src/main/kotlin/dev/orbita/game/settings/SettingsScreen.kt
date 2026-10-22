@@ -33,7 +33,7 @@ class SettingsScreen(
 ) : KtxScreen {
 
     private val uiScale = (Gdx.graphics.height / 720f).coerceIn(0.8f, 2f)
-    private val skin: Skin = UiSkin.create(1.35f * uiScale)
+    private val skin: Skin = UiSkin.create(1.6f * uiScale)
     private val stage = Stage(ScreenViewport())
     private val content = Table()
     private var current = Category.MATCH
@@ -69,7 +69,7 @@ class SettingsScreen(
             group.add(b)
             categories.add(b).fillX().padBottom(8f * uiScale).row()
         }
-        root.add(categories).top().width(230f * uiScale).padRight(pad)
+        root.add(categories).top().width(260f * uiScale).padRight(pad)
 
         val scroll = ScrollPane(content, skin).apply {
             setScrollingDisabled(true, false)
@@ -104,7 +104,7 @@ class SettingsScreen(
         if (p.kind == Kind.BOOL) {
             val box = CheckBox("", skin).apply { isChecked = settings.bool(p) }
             box.addListener(changed { settings[p] = if (box.isChecked) 1f else 0f })
-            content.add(label).width(520f * uiScale).left().padBottom(pad)
+            content.add(label).width(560f * uiScale).left().padBottom(pad)
             content.add(box).left().padBottom(pad).colspan(2).row()
             return
         }
@@ -114,8 +114,8 @@ class SettingsScreen(
             settings[p] = slider.value
             value.setText(format(p, settings[p]))
         })
-        content.add(label).width(520f * uiScale).left().padBottom(pad).padRight(pad)
-        content.add(slider).width(380f * uiScale).height(40f * uiScale).padBottom(pad).padRight(pad)
+        content.add(label).width(560f * uiScale).left().padBottom(pad).padRight(pad)
+        content.add(slider).width(340f * uiScale).height(40f * uiScale).padBottom(pad).padRight(pad)
         content.add(value).width(110f * uiScale).right().padBottom(pad).row()
     }
 
