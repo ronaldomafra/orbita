@@ -22,3 +22,6 @@ out/
 
 # SO
 .DS_Store
+
+# Android natives copiados no build
+android/libs/
