@@ -80,10 +80,11 @@ class Particles(private val textures: Textures, private val capacity: Int = 2048
         }
     }
 
-    /** Desenha com o blending aditivo já configurado no [batch]. */
-    fun draw(batch: SpriteBatch) {
+    /** Desenha em espaço de tela (projeção de [rig]), com o blending aditivo já configurado no [batch]. */
+    fun draw(batch: SpriteBatch, rig: CameraRig) {
         for (i in 0 until capacity) {
             if (life[i] <= 0f) continue
+            if (!rig.project(x[i], y[i])) continue
             val t = life[i] / maxLife[i]
             batch.setColor(r[i], g[i], b[i], t)
             val tex = when (kind[i]) {
@@ -91,8 +92,8 @@ class Particles(private val textures: Textures, private val capacity: Int = 2048
                 KIND_GLOW -> textures.glow
                 else -> textures.spark
             }
-            val s = size[i]
-            batch.draw(tex, x[i] - s / 2, y[i] - s / 2, s, s)
+            val s = size[i] * rig.pixelsPerUnit
+            batch.draw(tex, rig.screenX - s / 2, rig.screenY - s / 2, s, s)
         }
     }
 }

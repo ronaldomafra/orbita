@@ -10,13 +10,14 @@ class OrbitaGame(
     private val spikeUnits: Int = 0,
     private val debugAi: Boolean = false,
     private val stressUnits: Int = 0,
+    private val initialZoom: Float = 1f,
 ) : KtxGame<KtxScreen>() {
     override fun create() {
         if (spikeUnits > 0) {
             addScreen(SpikeScreen(spikeUnits))
             setScreen<SpikeScreen>()
         } else {
-            addScreen(MatchScreen(debugAi = debugAi, startUnitsOverride = stressUnits))
+            addScreen(MatchScreen(debugAi = debugAi, startUnitsOverride = stressUnits, initialZoom = initialZoom))
             setScreen<MatchScreen>()
         }
     }

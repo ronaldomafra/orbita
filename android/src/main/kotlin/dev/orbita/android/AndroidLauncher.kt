@@ -24,8 +24,9 @@ class AndroidLauncher : AndroidApplication() {
             useCompass = false
         }
         // Overlay de debug da IA: --ez debugAi true
-        // Estresse: --ei stress 1500 (unidades iniciais por base)
-        initialize(OrbitaGame(units, intent.getBooleanExtra("debugAi", false), intent.getIntExtra("stress", 0)), config)
+        // Estresse: --ei stress 1500 (unidades iniciais por base); zoom inicial: --ef zoom 0.5
+        val game = OrbitaGame(units, intent.getBooleanExtra("debugAi", false), intent.getIntExtra("stress", 0), intent.getFloatExtra("zoom", 1f))
+        initialize(game, config)
     }
 
     /**

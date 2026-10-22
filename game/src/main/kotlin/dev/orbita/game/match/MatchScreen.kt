@@ -4,13 +4,11 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.MathUtils
-import com.badlogic.gdx.utils.viewport.FitViewport
 import com.badlogic.gdx.utils.viewport.ScreenViewport
 import dev.orbita.ai.BotDriver
 import dev.orbita.sim.NO_FACTION
@@ -37,13 +35,14 @@ class MatchScreen(
     /** > 0 substitui as unidades iniciais de cada base (teste de estresse). */
     private val startUnitsOverride: Int = 0,
     theme: NebulaTheme = NebulaTheme.DEEP_VIOLET,
+    /** Zoom inicial da câmera (depuração: abrir já aproximado). */
+    initialZoom: Float = 1f,
 ) : KtxScreen, MatchInput.Listener {
 
     private var sim = newSimulation()
     private var bots = BotDriver.standard(sim, seed)
 
-    private val camera = OrthographicCamera()
-    private val viewport = FitViewport(sim.map.width, sim.map.height, camera)
+    private val rig = CameraRig(sim.map.width, sim.map.height)
     private val hudViewport = ScreenViewport()
     private val batch = SpriteBatch(8191)
     private val shapes = ShapeRenderer()
@@ -53,7 +52,7 @@ class MatchScreen(
     private val font = BitmapFont().apply { data.setScale(1.6f) }
     private val tint = Color()
     private val particles = Particles(textures)
-    private val input = MatchInput(viewport, camera, sim.map.width, sim.map.height, this)
+    private val input = MatchInput(rig, sim.map.width, sim.map.height, this)
     private var time = 0f
 
     // Posições do tick anterior, para interpolação e para a direção dos cometas.
@@ -94,6 +93,9 @@ class MatchScreen(
 
     init {
         Gdx.input.inputProcessor = input
+        rig.zoom = initialZoom
+        // Aproximado: centraliza na base do jogador.
+        if (initialZoom < 1f) sim.planets.firstOrNull { it.owner == PLAYER }?.let { rig.targetX = it.x; rig.targetY = it.y }
     }
 
     private fun newSimulation(): Simulation {
@@ -131,8 +133,8 @@ class MatchScreen(
         if (orderFxTime > 0f) orderFxTime -= delta
 
         clearScreen(0f, 0f, 0f)
-        viewport.apply()
-        camera.update()
+        Gdx.gl.glViewport(0, 0, Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight)
+        rig.update()
         drawWorld(alpha)
         drawHud()
         updateStats(delta)
@@ -153,14 +155,26 @@ class MatchScreen(
     // ---- desenho ----
 
     private fun drawWorld(alpha: Float) {
-        batch.projectionMatrix = camera.combined
+        batch.projectionMatrix = rig.camera.combined
         batch.begin()
         backdrop.draw(batch, time)
         computeDrawPositions(alpha)
 
-        // Coroas (aditivo) só para planetas ativos; trilhas de órbita discretas (AJ-07/AJ-16).
+        // No plano (perspectiva): trilhas de órbita, uma por plano (AJ-19), e o disco de seleção.
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
         if (pulse.size != sim.planets.size) pulse = FloatArray(sim.planets.size)
+        for (p in sim.planets) {
+            if (p.level < 1) continue
+            val orbit = orbitRadius(p)
+            val planes = planeCount(p)
+            batch.setColor(0.55f, 0.6f, 0.7f, 0.08f)
+            for (k in 0 until planes) drawEllipse(textures.ring, p.x, p.y, orbit, orbitSquash(), planeAngle(planes, k))
+        }
+        drawSelectionDisc()
+
+        // Em pé (espaço de tela): sprites redondos com a escala da profundidade (REF-06).
+        batch.projectionMatrix = rig.screenMatrix
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
         for (p in sim.planets) {
             if (p.level < 1) continue
             val r = sim.config.planetRadius(p.level)
@@ -169,16 +183,10 @@ class MatchScreen(
             val beat = pulse[p.id]
             // Aura grande e tênue (AJ-20) + coroa; ambas reforçadas no pulso de produção (AJ-21).
             batch.setColor(c.withAlpha(0.11f + 0.08f * beat))
-            draw(textures.softGlow, p.x, p.y, r * 9f * breathe)
+            drawStanding(textures.softGlow, p.x, p.y, r * 9f * breathe)
             batch.setColor(c.withAlpha(0.28f + 0.3f * beat))
-            draw(textures.softGlow, p.x, p.y, r * (4.2f + 0.8f * beat) * breathe)
-            // Uma trilha de órbita por plano (AJ-19).
-            val orbit = orbitRadius(p)
-            val planes = planeCount(p)
-            batch.setColor(0.55f, 0.6f, 0.7f, 0.08f)
-            for (k in 0 until planes) drawEllipse(textures.ring, p.x, p.y, orbit, ORBIT_TILT, planeAngle(planes, k))
+            drawStanding(textures.softGlow, p.x, p.y, r * (4.2f + 0.8f * beat) * breathe)
         }
-        drawSelectionDisc()
 
         // Unidades atrás do planeta (metade de cima do anel inclinado).
         drawUnits(behind = true)
@@ -193,8 +201,8 @@ class MatchScreen(
                 p.owner != NO_FACTION -> batch.setColor(c.r * 0.4f + 0.2f, c.g * 0.4f + 0.2f, c.b * 0.4f + 0.2f, 1f)
                 else -> batch.setColor(0.78f, 0.80f, 0.84f, 1f) // neutro: cinza claro, sem brilho (AJ-16)
             }
-            // Superfície texturizada (AJ-17): variante fixa por planeta.
-            draw(planetTextures.variants[p.id % PlanetTextures.VARIANTS], p.x, p.y, r * 2f)
+            // Superfície texturizada (AJ-17): variante fixa por planeta; sempre redonda na tela.
+            drawStanding(planetTextures.variants[p.id % PlanetTextures.VARIANTS], p.x, p.y, r * 2f)
         }
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
         for (p in sim.planets) {
@@ -202,18 +210,18 @@ class MatchScreen(
             val r = sphereRadius(p)
             val c = Palette.of(p.owner)
             batch.setColor(c.withAlpha(0.55f))
-            draw(textures.ring, p.x, p.y, r * 2.1f)
-            // Pontos de nível abaixo do planeta: acesos até o nível atual.
+            drawStanding(textures.ring, p.x, p.y, r * 2.1f)
+            // Pontos de nível abaixo do anel: acesos até o nível atual.
             for (lv in 1..p.maxLevel) {
                 batch.setColor(c.withAlpha(if (lv <= p.level) 1f else 0.25f))
-                draw(textures.spark, p.x + (lv - (p.maxLevel + 1) / 2f) * 12f, p.y - orbitRadius(p) * ORBIT_TILT - 14f, 12f)
+                drawStanding(textures.spark, p.x + (lv - (p.maxLevel + 1) / 2f) * 12f, p.y - orbitRadius(p) * orbitSquash() - 14f, 12f)
             }
         }
 
         // Unidades na frente do planeta, paradas e em trânsito (cometas).
         drawUnits(behind = false)
 
-        particles.draw(batch)
+        particles.draw(batch, rig)
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
         batch.end()
 
@@ -244,10 +252,10 @@ class MatchScreen(
                 val c = MathUtils.cosDeg(angle)
                 val s = MathUtils.sinDeg(angle)
                 val ox = x - p.x
-                val oy = (y - p.y) * ORBIT_TILT
+                val oy = (y - p.y) * orbitSquash()
                 x = p.x + ox * c - oy * s
                 y = p.y + ox * s + oy * c
-                val pvy = vy * ORBIT_TILT
+                val pvy = vy * orbitSquash()
                 val pvx = vx
                 vx = pvx * c - pvy * s
                 vy = pvx * s + pvy * c
@@ -270,9 +278,11 @@ class MatchScreen(
             val isBehind = orbiting && u.y[i] > sim.planets[u.home[i]].y
             if (isBehind != behind) continue
 
-            val x = drawX[i]
-            val y = drawY[i]
-            val scale = sqrt(u.power[i].toFloat())
+            if (!rig.project(drawX[i], drawY[i])) continue
+            val x = rig.screenX
+            val y = rig.screenY
+            val ppu = rig.pixelsPerUnit
+            val scale = sqrt(u.power[i].toFloat()) * ppu
             var selected = false
             if (selectionActive && u.owner[i] == PLAYER) {
                 val dx = u.x[i] - selX
@@ -283,10 +293,11 @@ class MatchScreen(
             val dim = if (isBehind) 0.6f else 1f
 
             // Rastro curto na direção do movimento: cometa em trânsito (AJ-12) e também em órbita (AJ-18).
-            val vx = drawVX[i]
-            val vy = drawVY[i]
+            // Velocidade aproximada na tela: o eixo do plano encolhe com a inclinação.
+            val vx = drawVX[i] * ppu
+            val vy = drawVY[i] * ppu / rig.upright
             val speed = sqrt(vx * vx + vy * vy)
-            if (speed > 0.3f) {
+            if (speed > 0.3f * ppu) {
                 val len = UNIT_SIZE * scale + speed * (if (orbiting) ORBIT_TAIL else COMET_LENGTH)
                 val width = UNIT_SIZE * scale * 0.5f
                 val angle = MathUtils.atan2(vy, vx) * MathUtils.radiansToDegrees
@@ -303,8 +314,9 @@ class MatchScreen(
                 draw(textures.glow, x, y, UNIT_SIZE * scale)
             }
             val ringW = UNIT_SIZE * scale * 1.05f
+            val ringH = ringW * 0.44f
             batch.setColor(lerp(c.r, 1f, 0.6f), lerp(c.g, 1f, 0.6f), lerp(c.b, 1f, 0.6f), 0.3f * dim)
-            batch.draw(textures.ring, x - ringW / 2, y - ringW * 0.22f, ringW, ringW * 0.44f)
+            batch.draw(textures.ring, x - ringW / 2, y - ringH / 2, ringW, ringH)
             batch.setColor(1f, 1f, 1f, 0.9f * dim)
             draw(textures.star4, x, y, UNIT_CORE * scale * 1.5f)
         }
@@ -365,7 +377,7 @@ class MatchScreen(
 
     private fun drawOverlays() {
         Gdx.gl.glEnable(GL20.GL_BLEND)
-        shapes.projectionMatrix = camera.combined
+        shapes.projectionMatrix = rig.camera.combined
         shapes.begin(ShapeRenderer.ShapeType.Line)
         for (p in sim.planets) {
             val r = sphereRadius(p)
@@ -468,6 +480,21 @@ class MatchScreen(
         batch.draw(texture, cx - size / 2, cy - size / 2, size, size)
     }
 
+    /**
+     * Sprite "em pé" em espaço de tela: projeta o ponto do plano e desenha redondo com a escala da
+     * profundidade (exige `batch.projectionMatrix = rig.screenMatrix`).
+     */
+    private fun drawStanding(texture: TextureRegion, worldX: Float, worldY: Float, worldSize: Float) {
+        if (!rig.project(worldX, worldY)) return
+        draw(texture, rig.screenX, rig.screenY, worldSize * rig.pixelsPerUnit)
+    }
+
+    /**
+     * Achatamento da órbita no plano: com a câmera inclinada o próprio plano já achata, então compensa
+     * para a elipse na tela manter a mesma proporção (AJ-07 + REF-06).
+     */
+    private fun orbitSquash(): Float = (ORBIT_TILT * rig.upright).coerceAtMost(1f)
+
     /** Anel achatado verticalmente (órbita vista em perspectiva), girado em [rotation] graus. */
     private fun drawEllipse(texture: TextureRegion, cx: Float, cy: Float, radius: Float, squash: Float, rotation: Float = 0f) {
         val w = radius * 2f / 0.92f
@@ -556,7 +583,7 @@ class MatchScreen(
     }
 
     override fun resize(width: Int, height: Int) {
-        viewport.update(width, height, true)
+        rig.resize(width, height)
         hudViewport.update(width, height, true)
     }
 
