@@ -29,7 +29,8 @@ data class SimConfig(
     val orbitJitter: Float = 10f,              // design
     val orbitSpeed: Float = 45f,               // design (velocidade tangencial)
     val arriveMargin: Float = 4f,              // design
-    val engageRange: Float = 120f,             // design
+    val engageRange: Float = 60f,              // design: alcance para travar num inimigo (era 120; usuário: atração forte demais)
+    val orbitEngageRange: Float = 40f,         // design: unidades em órbita só reagem a inimigos bem próximos
     val clashBase: Float = 6f,                 // design: alcance de choque = clashBase·√power
     val scanPeriodTicks: Int = 4,              // D14; potência de 2
     val speedVariation: Float = 0.12f,         // design: ±12% por unidade (AJ-09)

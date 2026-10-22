@@ -267,6 +267,7 @@ class Simulation(
         val mask = config.scanPeriodTicks - 1
         val phase = tick and mask
         val range2 = config.engageRange * config.engageRange
+        val orbitRange2 = config.orbitEngageRange * config.orbitEngageRange
         for (i in 0 until units.highWater) {
             if (!units.alive[i] || units.lock[i] >= 0 || (i and mask) != phase) continue
             val cell = cellIndex(units.x[i], units.y[i])
@@ -274,7 +275,8 @@ class Simulation(
             val cy = cell / cols
             val f = units.owner[i]
             var best = -1
-            var bestD = range2
+            // Em órbita, a unidade só sai para combater inimigos bem próximos (não é "puxada" por quem passa).
+            var bestD = if (units.mode[i] == MODE_ORBIT) orbitRange2 else range2
             for (of in factions.indices) {
                 if (of == f) continue
                 val base = of * cellCount
