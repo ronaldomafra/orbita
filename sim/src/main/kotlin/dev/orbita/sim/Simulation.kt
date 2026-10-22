@@ -20,6 +20,9 @@ class Simulation(
     val factions: List<Faction> = List(map.factionCount) { Faction(it) }
     val units = UnitStore()
 
+    /** Eventos do último tick (visual/áudio). Não fazem parte do estado. */
+    val events = SimEvents()
+
     var tick = 0
         private set
 
@@ -69,6 +72,7 @@ class Simulation(
     var profile = false
 
     fun step() {
+        events.clear()
         if (!profile) {
             applyPendingCommands()
             if (config.productionEnabled && tick % config.spawnPeriodTicks == 0) produce()
@@ -284,6 +288,7 @@ class Simulation(
             if (dx * dx + dy * dy > reach * reach) continue
             // ref: MECH-004 — m = min(a, b); ambos perdem m
             val m = min(units.power[i], units.power[j])
+            events.add(SimEvents.CLASH, (units.x[i] + units.x[j]) * 0.5f, (units.y[i] + units.y[j]) * 0.5f, units.owner[i])
             units.lock[i] = -1
             units.lock[j] = -1
             setPower(i, units.power[i] - m)
@@ -427,11 +432,13 @@ class Simulation(
         if (p.growth < cost || p.level >= p.maxLevel) return
         p.level += 1
         p.health = Rules.maxHealth(p.level)
+        events.add(if (p.level == 1) SimEvents.CAPTURE else SimEvents.LEVEL_UP, p.x, p.y, p.owner)
         p.growth = if (p.level == p.maxLevel) 0 else p.growth - cost
     }
 
     /** Planeta destruído: volta ao nível 0 e mantém o dono; ordens contra ele são canceladas. ref: MECH-002, LAC-006 */
     private fun destroy(p: Planet) {
+        events.add(SimEvents.DESTROYED, p.x, p.y, p.owner)
         p.level = 0
         p.growth = 0
         p.health = 0

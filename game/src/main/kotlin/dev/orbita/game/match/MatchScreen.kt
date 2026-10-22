@@ -16,6 +16,7 @@ import dev.orbita.sim.NO_FACTION
 import dev.orbita.sim.Planet
 import dev.orbita.sim.Rules
 import dev.orbita.sim.SendUnits
+import dev.orbita.sim.SimEvents
 import dev.orbita.sim.Simulation
 import dev.orbita.sim.StandardMaps
 import dev.orbita.sim.Target
@@ -43,6 +44,14 @@ class MatchScreen(
     private val textures = Textures()
     private val font = BitmapFont().apply { data.setScale(1.6f) }
     private val tint = Color()
+    private val particles = Particles(textures)
+    private var time = 0f
+
+    // Fundo: estrelas fixas (seed própria, só visual).
+    private val starX = FloatArray(STARS)
+    private val starY = FloatArray(STARS)
+    private val starSize = FloatArray(STARS)
+    private val starAlpha = FloatArray(STARS)
 
     // Posições do tick anterior, para interpolação.
     private var prevX = FloatArray(0)
@@ -70,6 +79,13 @@ class MatchScreen(
     private var fps = 0
 
     init {
+        val rnd = java.util.Random(7)
+        for (k in 0 until STARS) {
+            starX[k] = rnd.nextFloat() * sim.map.width
+            starY[k] = rnd.nextFloat() * sim.map.height
+            starSize[k] = 3f + rnd.nextFloat() * rnd.nextFloat() * 9f
+            starAlpha[k] = 0.15f + rnd.nextFloat() * 0.55f
+        }
         Gdx.input.inputProcessor = MatchInput(viewport, camera, sim.map.width, sim.map.height, this)
     }
 
@@ -84,9 +100,12 @@ class MatchScreen(
             snapshotPrevious()
             bots.beforeStep()
             sim.step()
+            consumeEvents()
             accumulator -= STEP
         }
         val alpha = accumulator / STEP
+        time += delta
+        particles.update(delta)
         if (orderFxTime > 0f) orderFxTime -= delta
 
         clearScreen(Palette.background.r, Palette.background.g, Palette.background.b)
@@ -114,53 +133,105 @@ class MatchScreen(
     private fun drawWorld(alpha: Float) {
         batch.projectionMatrix = camera.combined
         batch.begin()
-
-        // Halos (aditivo) e discos dos planetas.
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
+        drawBackground()
+
+        // Coroas pulsantes (aditivo).
         for (p in sim.planets) {
             val r = sim.config.planetRadius(p.level)
-            batch.setColor(Palette.of(p.owner).withAlpha(if (p.level >= 1) 0.28f else 0.07f))
-            draw(textures.glow, p.x, p.y, r * 4.2f)
+            val pulse = 1f + 0.06f * MathUtils.sin(time * 1.6f + p.id * 1.7f)
+            val strength = when {
+                p.level >= 1 -> 0.6f
+                p.owner != NO_FACTION -> 0.2f
+                else -> 0.06f
+            }
+            batch.setColor(Palette.of(p.owner).withAlpha(strength))
+            draw(textures.glow, p.x, p.y, r * 4.8f * pulse)
         }
+
+        // Esferas (normal) e borda acesa (aditivo).
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
         for (p in sim.planets) {
             val r = sim.config.planetRadius(p.level)
-            val base = Palette.of(p.owner)
-            val k = if (p.level >= 1) 0.55f else 0.22f
-            batch.setColor(base.r * k, base.g * k, base.b * k, 1f)
-            draw(textures.disc, p.x, p.y, r * 2f)
-            // Anéis de nível: máximo possível (fraco) × atingido (forte).
+            val c = Palette.of(p.owner)
+            when {
+                p.level >= 1 -> batch.setColor(lerp(c.r, 1f, 0.12f), lerp(c.g, 1f, 0.12f), lerp(c.b, 1f, 0.12f), 1f)
+                p.owner != NO_FACTION -> batch.setColor(c.r * 0.45f, c.g * 0.45f, c.b * 0.45f, 1f)
+                else -> batch.setColor(0.27f, 0.30f, 0.37f, 1f)
+            }
+            draw(textures.sphere, p.x, p.y, r * 2f)
+        }
+        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
+        for (p in sim.planets) {
+            val r = sim.config.planetRadius(p.level)
+            val c = Palette.of(p.owner)
+            batch.setColor(c.withAlpha(if (p.level >= 1) 0.7f else 0.25f))
+            draw(textures.ring, p.x, p.y, r * 2.12f)
+            // Pontos de nível abaixo do planeta: acesos até o nível atual.
             for (lv in 1..p.maxLevel) {
-                batch.setColor(base.withAlpha(if (lv <= p.level) 0.9f else 0.15f))
-                draw(textures.ring, p.x, p.y, (r + 4f + lv * 6f) * 2f)
+                batch.setColor(c.withAlpha(if (lv <= p.level) 1f else 0.25f))
+                draw(textures.spark, p.x + (lv - (p.maxLevel + 1) / 2f) * 13f, p.y - r - 12f, 14f)
             }
         }
 
-        // Unidades (aditivo), interpoladas.
-        batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
+        // Unidades: halo colorido + núcleo branco (aditivo), interpoladas.
         val u = sim.units
         val sel2 = selR * selR
         for (i in 0 until u.highWater) {
             if (!u.alive[i]) continue
             val x = if (i < prevAlive.size && prevAlive[i]) prevX[i] + (u.x[i] - prevX[i]) * alpha else u.x[i]
             val y = if (i < prevAlive.size && prevAlive[i]) prevY[i] + (u.y[i] - prevY[i]) * alpha else u.y[i]
-            val size = UNIT_SIZE * sqrt(u.power[i].toFloat())
-            batch.color = Palette.of(u.owner[i])
-            draw(textures.glow, x, y, size)
+            val scale = sqrt(u.power[i].toFloat())
+            var selected = false
             if (selectionActive && u.owner[i] == PLAYER) {
                 val dx = u.x[i] - selX
                 val dy = u.y[i] - selY
-                if (dx * dx + dy * dy <= sel2) {
-                    batch.setColor(1f, 1f, 1f, 0.9f)
-                    draw(textures.glow, x, y, size * 0.6f)
-                }
+                selected = dx * dx + dy * dy <= sel2
             }
+            val c = Palette.of(u.owner[i])
+            batch.setColor(c.r, c.g, c.b, 0.85f)
+            draw(textures.glow, x, y, UNIT_SIZE * scale * (if (selected) 1.5f else 1f))
+            batch.setColor(1f, 1f, 1f, if (selected) 1f else 0.75f)
+            draw(textures.spark, x, y, UNIT_CORE * scale)
         }
+
+        particles.draw(batch)
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
         batch.end()
 
         drawOverlays()
     }
+
+    /** Só estrelas pequenas: quads grandes (nebulosa) estouram o fill rate da GPU do A10. */
+    private fun drawBackground() {
+        for (k in starX.indices) {
+            val twinkle = 0.75f + 0.25f * MathUtils.sin(time * 0.8f + k)
+            batch.setColor(0.75f, 0.82f, 1f, starAlpha[k] * twinkle)
+            draw(textures.spark, starX[k], starY[k], starSize[k])
+        }
+    }
+
+    /** Converte eventos do tick em efeitos. */
+    private fun consumeEvents() {
+        val e = sim.events
+        for (k in 0 until e.count) {
+            val c = Palette.of(e.faction[k])
+            when (e.type[k]) {
+                SimEvents.CLASH -> particles.spark(e.x[k], e.y[k], c, 2)
+                SimEvents.CAPTURE -> {
+                    particles.ring(e.x[k], e.y[k], c, 40f, 260f, 0.8f)
+                    particles.flash(e.x[k], e.y[k], c, 220f, 0.5f)
+                }
+                SimEvents.LEVEL_UP -> particles.ring(e.x[k], e.y[k], Color.WHITE, 60f, 200f, 0.6f)
+                SimEvents.DESTROYED -> {
+                    particles.flash(e.x[k], e.y[k], c, 260f, 0.6f)
+                    particles.spark(e.x[k], e.y[k], c, 24)
+                }
+            }
+        }
+    }
+
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
     private fun drawOverlays() {
         Gdx.gl.glEnable(GL20.GL_BLEND)
@@ -267,7 +338,7 @@ class MatchScreen(
         }
     }
 
-    private fun draw(texture: com.badlogic.gdx.graphics.Texture, cx: Float, cy: Float, size: Float) {
+    private fun draw(texture: com.badlogic.gdx.graphics.g2d.TextureRegion, cx: Float, cy: Float, size: Float) {
         batch.draw(texture, cx - size / 2, cy - size / 2, size, size)
     }
 
@@ -364,7 +435,9 @@ class MatchScreen(
         const val PLAYER = 0
         private const val STEP = 1f / 60f
         private const val MAX_FRAME_DELTA = 0.25f
-        private const val UNIT_SIZE = 9f
+        private const val UNIT_SIZE = 12f
+        private const val UNIT_CORE = 4.5f
+        private const val STARS = 260
         private const val TAP_MARGIN = 30f
         private const val MIN_SELECTION_RADIUS = 12f
         private const val ORDER_FX_SECONDS = 0.5f
