@@ -15,6 +15,7 @@ class AndroidLauncher : AndroidApplication() {
             useAccelerometer = false
             useCompass = false
         }
-        initialize(OrbitaGame(units), config)
+        // Overlay de debug da IA: --ez debugAi true
+        initialize(OrbitaGame(units, intent.getBooleanExtra("debugAi", false)), config)
     }
 }

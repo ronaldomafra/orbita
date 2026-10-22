@@ -1,14 +1,17 @@
 package dev.orbita.game.match
 
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.Input
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
+import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.viewport.FitViewport
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import dev.orbita.ai.BotDriver
 import dev.orbita.sim.NO_FACTION
 import dev.orbita.sim.Planet
 import dev.orbita.sim.Rules
@@ -21,12 +24,16 @@ import ktx.app.clearScreen
 import kotlin.math.sqrt
 
 /**
- * Partida single player (F6.3): o jogador é a facção 0. Os bots ainda não agem (F6.4).
+ * Partida single player: o jogador é a facção 0 e as facções 1..3 são bots (F6.4).
  * A simulação avança em passo fixo; a renderização interpola entre o tick anterior e o atual.
  */
-class MatchScreen(private val seed: Long = System.nanoTime()) : KtxScreen, MatchInput.Listener {
+class MatchScreen(
+    private val seed: Long = System.nanoTime(),
+    private var debugAi: Boolean = false,
+) : KtxScreen, MatchInput.Listener {
 
     private var sim = newSimulation()
+    private var bots = BotDriver.standard(sim, seed)
 
     private val camera = OrthographicCamera()
     private val viewport = FitViewport(sim.map.width, sim.map.height, camera)
@@ -72,8 +79,10 @@ class MatchScreen(private val seed: Long = System.nanoTime()) : KtxScreen, Match
 
     override fun render(delta: Float) {
         accumulator += minOf(delta, MAX_FRAME_DELTA)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.D)) debugAi = !debugAi
         while (accumulator >= STEP) {
             snapshotPrevious()
+            bots.beforeStep()
             sim.step()
             accumulator -= STEP
         }
@@ -184,12 +193,41 @@ class MatchScreen(private val seed: Long = System.nanoTime()) : KtxScreen, Match
             shapes.setColor(1f, 1f, 1f, 1f - t)
             shapes.circle(orderFxX, orderFxY, 10f + 40f * t, 32)
         }
+        if (debugAi) drawAiDebug()
         shapes.end()
     }
 
+    /** Overlay de debug da IA: linhas fonte → alvo das últimas decisões de cada bot (tecla D no desktop). */
+    private fun drawAiDebug() {
+        for (bot in bots.bots) {
+            val c = Palette.of(bot.faction)
+            for (d in bot.lastDecisions) {
+                val t = sim.planets[d.targetPlanet]
+                shapes.setColor(c.r, c.g, c.b, 0.55f)
+                var k = 0
+                while (k < d.sourcePoints.size) {
+                    shapes.line(d.sourcePoints[k], d.sourcePoints[k + 1], t.x, t.y)
+                    k += 2
+                }
+                shapes.circle(t.x, t.y, sim.config.planetRadius(t.level) + 26f, 32)
+            }
+        }
+    }
+
+    /** Arco só com o contorno, no sentido horário a partir do topo (o `ShapeRenderer.arc` desenha os raios até o centro). */
     private fun arc(x: Float, y: Float, radius: Float, fraction: Float) {
         if (fraction <= 0f) return
-        shapes.arc(x, y, radius, 90f, -360f * fraction.coerceAtMost(1f), 48)
+        val segments = maxOf(2, (ARC_SEGMENTS * fraction.coerceAtMost(1f)).toInt())
+        val sweep = -MathUtils.PI2 * fraction.coerceAtMost(1f)
+        var px = x
+        var py = y + radius
+        for (k in 1..segments) {
+            val a = MathUtils.HALF_PI + sweep * k / segments
+            val nx = x + MathUtils.cos(a) * radius
+            val ny = y + MathUtils.sin(a) * radius
+            shapes.line(px, py, nx, ny)
+            px = nx; py = ny
+        }
     }
 
     private fun drawHud() {
@@ -205,6 +243,7 @@ class MatchScreen(private val seed: Long = System.nanoTime()) : KtxScreen, Match
         }
         font.color = Color.GRAY
         font.draw(batch, "$fps fps", hudViewport.worldWidth - 120f, top)
+        if (debugAi) drawAiDebugText()
 
         val result = when {
             sim.factions[PLAYER].eliminated -> "Derrota — toque para recomeçar"
@@ -216,6 +255,16 @@ class MatchScreen(private val seed: Long = System.nanoTime()) : KtxScreen, Match
             font.draw(batch, result, 0f, hudViewport.worldHeight / 2, hudViewport.worldWidth, 1, false)
         }
         batch.end()
+    }
+
+    private fun drawAiDebugText() {
+        var y = hudViewport.worldHeight - 60f
+        for (bot in bots.bots) {
+            font.color = Palette.of(bot.faction)
+            val summary = bot.lastDecisions.joinToString("  ") { "${it.kind.name.lowercase()}->P${it.targetPlanet} (${it.sent}/${it.need})" }
+            font.draw(batch, "${bot.weights.name}: $summary", 16f, y)
+            y -= 30f
+        }
     }
 
     private fun draw(texture: com.badlogic.gdx.graphics.Texture, cx: Float, cy: Float, size: Float) {
@@ -291,6 +340,7 @@ class MatchScreen(private val seed: Long = System.nanoTime()) : KtxScreen, Match
 
     private fun restart() {
         sim = newSimulation()
+        bots = BotDriver.standard(sim, seed)
         prevX = FloatArray(0); prevY = FloatArray(0); prevAlive = BooleanArray(0)
         selectionActive = false
         lassoActive = false
@@ -318,5 +368,6 @@ class MatchScreen(private val seed: Long = System.nanoTime()) : KtxScreen, Match
         private const val TAP_MARGIN = 30f
         private const val MIN_SELECTION_RADIUS = 12f
         private const val ORDER_FX_SECONDS = 0.5f
+        private const val ARC_SEGMENTS = 48
     }
 }
