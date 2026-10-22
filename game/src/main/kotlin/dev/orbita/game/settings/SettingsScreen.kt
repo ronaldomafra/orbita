@@ -33,7 +33,7 @@ class SettingsScreen(
 ) : KtxScreen {
 
     private val uiScale = (Gdx.graphics.height / 720f).coerceIn(0.8f, 2f)
-    private val skin: Skin = UiSkin.create(1.6f * uiScale)
+    private val skin: Skin = UiSkin.create(2.2f * uiScale)
     private val stage = Stage(ScreenViewport())
     private val content = Table()
     private var current = Category.MATCH
@@ -69,7 +69,7 @@ class SettingsScreen(
             group.add(b)
             categories.add(b).fillX().padBottom(8f * uiScale).row()
         }
-        root.add(categories).top().width(260f * uiScale).padRight(pad)
+        root.add(categories).top().width(300f * uiScale).padRight(pad)
 
         val scroll = ScrollPane(content, skin).apply {
             setScrollingDisabled(true, false)
@@ -99,13 +99,13 @@ class SettingsScreen(
     }
 
     private fun addRow(p: Param) {
-        val pad = 8f * uiScale
+        val pad = 14f * uiScale
         val label = Label(p.label, skin).apply { setWrap(true) }
         if (p.kind == Kind.BOOL) {
             val box = CheckBox("", skin).apply { isChecked = settings.bool(p) }
             box.addListener(changed { settings[p] = if (box.isChecked) 1f else 0f })
             content.add(label).width(560f * uiScale).left().padBottom(pad)
-            content.add(box).left().padBottom(pad).colspan(2).row()
+            content.add(box).size(40f * uiScale).left().padBottom(pad).colspan(2).row()
             return
         }
         val value = Label(format(p, settings[p]), skin).apply { setAlignment(Align.right) }
@@ -115,8 +115,8 @@ class SettingsScreen(
             value.setText(format(p, settings[p]))
         })
         content.add(label).width(560f * uiScale).left().padBottom(pad).padRight(pad)
-        content.add(slider).width(340f * uiScale).height(40f * uiScale).padBottom(pad).padRight(pad)
-        content.add(value).width(110f * uiScale).right().padBottom(pad).row()
+        content.add(slider).width(300f * uiScale).height(56f * uiScale).padBottom(pad).padRight(pad)
+        content.add(value).width(130f * uiScale).right().padBottom(pad).row()
     }
 
     private fun format(p: Param, v: Float): String = when (p.kind) {

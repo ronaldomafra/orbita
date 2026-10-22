@@ -32,9 +32,9 @@ object UiSkin {
         val button = rect(Color(0.10f, 0.14f, 0.22f, 1f))
         val buttonOver = rect(Color(0.14f, 0.20f, 0.30f, 1f))
         val buttonChecked = rect(Color(0.06f, 0.35f, 0.45f, 1f))
-        val sliderBg = rect(Color(0.20f, 0.26f, 0.36f, 1f), height = 6)
-        val sliderFill = rect(ACCENT, height = 6)
-        val knob = circle(ACCENT, 26)
+        val sliderBg = rect(Color(0.20f, 0.26f, 0.36f, 1f), height = 8)
+        val sliderFill = rect(ACCENT, height = 8)
+        val knob = circle(ACCENT, 38)
         val boxOff = box(Color(0.20f, 0.26f, 0.36f, 1f), filled = false)
         val boxOn = box(ACCENT, filled = true)
         skin.add("panel", panel, Drawable::class.java)
@@ -68,7 +68,7 @@ object UiSkin {
     }
 
     private fun box(color: Color, filled: Boolean): Drawable {
-        val size = 30
+        val size = 40
         val pixmap = Pixmap(size, size, Pixmap.Format.RGBA8888).apply {
             setColor(0f, 0f, 0f, 0f); fill()
             setColor(color)
