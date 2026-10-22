@@ -30,6 +30,8 @@ data class NebulaTheme(
     val clouds: List<NebulaCloud>,
     val starCount: Int = 1400,
     val dustPatches: Int = 4,
+    /** Opacidade das nebulosas: o fundo deve ser discreto e não competir com as unidades. */
+    val nebulaOpacity: Float = 0.28f,
 ) {
     companion object {
         val DEEP_VIOLET = NebulaTheme(
@@ -103,11 +105,12 @@ class Backdrop(
                 roll < 0.95f -> setStarColor(k, 1f, 0.45f, 0.35f)  // avermelhada
                 else -> setStarColor(k, 0.55f, 1f, 0.55f)          // esverdeada
             }
+            // Maioria pequena e fraca; poucas maiores, com brilho contido (não competem com as unidades).
             val bright = rnd.nextFloat()
-            starA[k] = 0.18f + bright * bright * 0.82f
-            starSize[k] = 2.2f + bright * 2.6f
-            starCross[k] = rnd.nextFloat() < 0.04f
-            if (starCross[k]) { starA[k] = 0.9f; setStarColor(k, 0.85f, 0.9f, 1f) }
+            starA[k] = 0.12f + bright * bright * bright * 0.43f
+            starSize[k] = 1.6f + bright * bright * 2.2f
+            starCross[k] = rnd.nextFloat() < 0.025f
+            if (starCross[k]) { starA[k] = 0.5f; starSize[k] = 3f; setStarColor(k, 0.85f, 0.9f, 1f) }
         }
         dustX = FloatArray(theme.dustPatches) { minX + rnd.nextFloat() * spanX }
         dustY = FloatArray(theme.dustPatches) { minY + rnd.nextFloat() * spanY }
@@ -121,12 +124,12 @@ class Backdrop(
     /** Chamar com o batch aberto e a projeção do mundo. Deixa o blending em modo normal. */
     fun draw(batch: SpriteBatch, time: Float) {
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
-        batch.setColor(1f, 1f, 1f, 0.55f)
+        batch.setColor(1f, 1f, 1f, 0.3f)
         for (k in dustX.indices) {
             val s = dustSize[k]
             batch.draw(dustTexture, dustX[k] - s / 2, dustY[k] - s / 2, s, s)
         }
-        batch.setColor(1f, 1f, 1f, 1f)
+        batch.setColor(1f, 1f, 1f, theme.nebulaOpacity)
         theme.clouds.forEachIndexed { i, c ->
             batch.draw(cloudTextures[i], c.x - c.size / 2, c.y - c.size / 2, c.size, c.size)
         }
@@ -134,12 +137,12 @@ class Backdrop(
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE)
         for (k in 0 until n) {
             var a = starA[k]
-            if (starCross[k]) a *= 0.8f + 0.2f * MathUtils.sin(time * 1.3f + k)
+            if (starCross[k]) a *= 0.75f + 0.25f * MathUtils.sin(time * 1.1f + k)
             batch.setColor(starR[k], starG[k], starB[k], a)
             val s = starSize[k]
             batch.draw(textures.dot, starX[k] - s / 2, starY[k] - s / 2, s, s)
             if (starCross[k]) {
-                val c = s * 3.6f
+                val c = s * 2.6f
                 batch.draw(textures.cross, starX[k] - c / 2, starY[k] - c / 2, c, c)
             }
         }

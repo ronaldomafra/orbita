@@ -493,7 +493,8 @@ class MatchScreen(
             orderFxY = planet?.y ?: worldY
             selectionActive = false
             selectedPlanet = -1
-        } else if (doubleTap && planet != null && planet.owner == PLAYER) {
+        } else if (planet != null && planet.owner == PLAYER) {
+            // Toque em qualquer parte do próprio planeta (inclusive no anel) seleciona todas as unidades dele.
             selectionActive = true
             selectedPlanet = planet.id
             selX = planet.x; selY = planet.y
@@ -505,7 +506,8 @@ class MatchScreen(
         var best: Planet? = null
         var bestD = Float.MAX_VALUE
         for (p in sim.planets) {
-            val reach = sim.config.planetRadius(p.level) + TAP_MARGIN
+            // Área de toque = anel de órbita inteiro + margem (o planeta desenhado é pequeno dentro do anel).
+            val reach = orbitRadius(p) + sim.config.orbitJitter + TAP_MARGIN
             val dx = p.x - x
             val dy = p.y - y
             val d = dx * dx + dy * dy
@@ -548,7 +550,7 @@ class MatchScreen(
         private const val UNIT_SIZE = 15f
         private const val UNIT_CORE = 5.5f
         private const val COMET_LENGTH = 7f
-        private const val TAP_MARGIN = 30f
+        private const val TAP_MARGIN = 22f
         private const val MIN_SELECTION_RADIUS = 12f
         private const val ORDER_FX_SECONDS = 0.5f
         private const val ARC_SEGMENTS = 48
