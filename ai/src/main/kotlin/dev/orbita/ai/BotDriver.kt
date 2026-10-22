@@ -15,11 +15,20 @@ class BotDriver(val sim: Simulation, val bots: List<BotBrain>) {
     }
 
     companion object {
-        /** Bots padrão do MVP: facções 1..3 com as três personalidades. */
-        fun standard(sim: Simulation, seed: Long, dropRate: Int = 0): BotDriver {
+        /**
+         * Bots padrão do MVP: facções 1..3 com as personalidades de [personalities] (em rodízio),
+         * handicap [dropRate] e início em [startTick].
+         */
+        fun standard(
+            sim: Simulation,
+            seed: Long,
+            dropRate: Int = 0,
+            personalities: List<StrategyWeights> = Personalities.ALL,
+            startTick: Int = UtilityBot.AI_START_TICK,
+        ): BotDriver {
             val bots = (1 until sim.factions.size).map { f ->
                 sim.factions[f].dropRate = dropRate
-                UtilityBot(f, Personalities.ALL[(f - 1) % Personalities.ALL.size], seed)
+                UtilityBot(f, personalities[(f - 1) % personalities.size], seed, startTick = startTick)
             }
             return BotDriver(sim, bots)
         }

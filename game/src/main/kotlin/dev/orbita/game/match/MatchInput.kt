@@ -27,6 +27,11 @@ class MatchInput(
         fun onTap(worldX: Float, worldY: Float, doubleTap: Boolean)
     }
 
+    /** Resistência ao arrastar além da borda (1 = sem resistência). */
+    var edgeResistance = 0.45f
+    /** Velocidade da mola de retorno à área de repouso. */
+    var returnRate = 6f
+
     private val tmp = Vector2()
     private val tmpA = Vector2()
     private val tmpB = Vector2()
@@ -159,7 +164,7 @@ class MatchInput(
         rig.pick(lastMidX, lastMidY, tmpA)
         rig.pick(lastMidX + dxScreen, lastMidY + dyScreen, tmpB)
         val outside = softOffsetX() != 0f || softOffsetY() != 0f
-        val resistance = if (outside) OUTSIDE_RESISTANCE else 1f
+        val resistance = if (outside) edgeResistance else 1f
         rig.targetX -= (tmpB.x - tmpA.x) * resistance
         rig.targetY -= (tmpB.y - tmpA.y) * resistance
         hardClamp()
@@ -173,7 +178,7 @@ class MatchInput(
     /** Chamar a cada frame: sem dedos na tela, a câmera volta suavemente para a área de repouso. */
     fun update(delta: Float) {
         if (activePointers() > 0) return
-        val k = (RETURN_RATE * delta).coerceAtMost(1f)
+        val k = (returnRate * delta).coerceAtMost(1f)
         val ox = softOffsetX()
         val oy = softOffsetY()
         if (ox == 0f && oy == 0f) return
@@ -229,7 +234,5 @@ class MatchInput(
         private const val DOUBLE_TAP_PX = 60f
         private const val SOFT_MARGIN = 120f
         private const val HARD_EXTRA = 0.5f
-        private const val OUTSIDE_RESISTANCE = 0.45f
-        private const val RETURN_RATE = 6f
     }
 }

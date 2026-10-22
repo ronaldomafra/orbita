@@ -12,11 +12,16 @@ import kotlin.math.tan
 
 /**
  * Câmera 3D sobre o plano do mapa (z = 0). Com o mapa inteiro na tela a vista é de cima; ao aproximar,
- * a câmera inclina até [MAX_PITCH_DEG] e o mapa ganha perspectiva (REF-06). O jogo continua 2D no plano.
+ * a câmera inclina até [maxPitchDeg] e o mapa ganha perspectiva (REF-06). O jogo continua 2D no plano.
  */
 class CameraRig(private val worldWidth: Float, private val worldHeight: Float) {
 
-    val camera = PerspectiveCamera(FOV_DEG, 1f, 1f)
+    val camera = PerspectiveCamera(DEFAULT_FOV, 1f, 1f)
+
+    var fovDeg = DEFAULT_FOV
+    var maxPitchDeg = DEFAULT_MAX_PITCH
+    var minZoom = DEFAULT_MIN_ZOOM
+    var maxZoom = DEFAULT_MAX_ZOOM
 
     /** Ponto do plano no centro da tela. */
     var targetX = worldWidth / 2
@@ -24,7 +29,7 @@ class CameraRig(private val worldWidth: Float, private val worldHeight: Float) {
 
     /** 1 = mapa inteiro; < 1 aproxima (e inclina); > 1 afasta. */
     var zoom = 1f
-        set(value) { field = value.coerceIn(MIN_ZOOM, MAX_ZOOM) }
+        set(value) { field = value.coerceIn(minZoom, maxZoom) }
 
     /** Inclinação atual em radianos (0 = vista de cima). */
     var pitch = 0f
@@ -48,10 +53,21 @@ class CameraRig(private val worldWidth: Float, private val worldHeight: Float) {
     var pixelsPerUnit = 0f
         private set
 
+    /** Aplica novos limites/ângulos (menu de ajustes) e recalcula o enquadramento. */
+    fun configure(fov: Float, maxPitch: Float, minZoom: Float, maxZoom: Float) {
+        fovDeg = fov
+        maxPitchDeg = maxPitch
+        this.minZoom = minZoom
+        this.maxZoom = maxZoom
+        zoom = zoom
+        if (camera.viewportWidth > 1f) resize(camera.viewportWidth.toInt(), camera.viewportHeight.toInt())
+    }
+
     fun resize(width: Int, height: Int) {
         camera.viewportWidth = width.toFloat()
         camera.viewportHeight = height.toFloat()
-        val tanHalf = tan(FOV_DEG * MathUtils.degreesToRadians / 2)
+        camera.fieldOfView = fovDeg
+        val tanHalf = tan(fovDeg * MathUtils.degreesToRadians / 2)
         val aspect = camera.viewportWidth / camera.viewportHeight
         fitDistance = max(worldHeight / 2 / tanHalf, worldWidth / 2 / (tanHalf * aspect)) * FIT_MARGIN
         focalPx = camera.viewportHeight / 2 / tanHalf
@@ -60,8 +76,8 @@ class CameraRig(private val worldWidth: Float, private val worldHeight: Float) {
     }
 
     fun update() {
-        val closeness = ((1f - zoom) / (1f - MIN_ZOOM)).coerceIn(0f, 1f)
-        pitch = MAX_PITCH_DEG * MathUtils.degreesToRadians * closeness * closeness * (3f - 2f * closeness)
+        val closeness = ((1f - zoom) / (1f - minZoom)).coerceIn(0f, 1f)
+        pitch = maxPitchDeg * MathUtils.degreesToRadians * closeness * closeness * (3f - 2f * closeness)
         val d = fitDistance * zoom
         val s = sin(pitch)
         val c = cos(pitch)
@@ -103,10 +119,10 @@ class CameraRig(private val worldWidth: Float, private val worldHeight: Float) {
     fun visibleHalfHeight(): Float = worldHeight / 2 * zoom
 
     companion object {
-        const val MIN_ZOOM = 0.42f
-        const val MAX_ZOOM = 2.2f
-        private const val FOV_DEG = 40f
-        private const val MAX_PITCH_DEG = 42f
+        const val DEFAULT_MIN_ZOOM = 0.42f
+        const val DEFAULT_MAX_ZOOM = 2.2f
+        const val DEFAULT_FOV = 40f
+        const val DEFAULT_MAX_PITCH = 42f
         private const val FIT_MARGIN = 1.02f
     }
 }

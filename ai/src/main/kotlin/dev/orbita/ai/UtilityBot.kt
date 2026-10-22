@@ -20,6 +20,8 @@ class UtilityBot(
     seed: Long,
     /** Escalonamento entre bots para não decidirem no mesmo tick. */
     private val phaseOffset: Int = faction * 17,
+    /** Tick a partir do qual o bot começa a agir. */
+    private val startTick: Int = AI_START_TICK,
 ) : BotBrain {
 
     private val rng = Rng(seed xor (faction.toLong() * 0x2545F4914F6CDD1DL))
@@ -33,7 +35,7 @@ class UtilityBot(
     }
 
     override fun isDue(tick: Int): Boolean =
-        tick >= AI_START_TICK && (tick + phaseOffset) % weights.thinkPeriodTicks == 0
+        tick >= startTick && (tick + phaseOffset) % weights.thinkPeriodTicks == 0
 
     override fun decide(obs: Observation): List<Command> {
         obs.refresh()

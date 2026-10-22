@@ -10,7 +10,11 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.MathUtils
 import com.badlogic.gdx.utils.viewport.ScreenViewport
+import com.badlogic.gdx.InputAdapter
+import com.badlogic.gdx.InputMultiplexer
 import dev.orbita.ai.BotDriver
+import dev.orbita.game.settings.Params
+import dev.orbita.game.settings.Settings
 import dev.orbita.sim.NO_FACTION
 import dev.orbita.sim.Planet
 import dev.orbita.sim.Rules
@@ -30,17 +34,33 @@ import kotlin.math.sqrt
  * As órbitas são desenhadas em perspectiva (elipse inclinada); a simulação continua 2D.
  */
 class MatchScreen(
+    private val settings: Settings,
+    /** Abre o menu de ajustes (a partida fica pausada enquanto ele está aberto). */
+    private val onOpenSettings: () -> Unit,
     private val seed: Long = System.nanoTime(),
     private var debugAi: Boolean = false,
     /** > 0 substitui as unidades iniciais de cada base (teste de estresse). */
     private val startUnitsOverride: Int = 0,
-    theme: NebulaTheme = NebulaTheme.DEEP_VIOLET,
+    private val theme: NebulaTheme = NebulaTheme.DEEP_VIOLET,
     /** Zoom inicial da câmera (depuração: abrir já aproximado). */
     initialZoom: Float = 1f,
 ) : KtxScreen, MatchInput.Listener {
 
+    /** Overlay da IA forçado pelo launcher (`--ez debugAi true`), além do ajuste. */
+    private val debugAiForced = debugAi
+
     private var sim = newSimulation()
-    private var bots = BotDriver.standard(sim, seed)
+    private var bots = newBots()
+
+    // Parâmetros visuais lidos do menu de ajustes (ver applyLiveSettings).
+    private var unitSize = 15f
+    private var unitCore = 5.5f
+    private var cometLength = 7f
+    private var orbitTail = 4f
+    private var orbitTilt = 0.38f
+    private var auraIntensity = 1f
+    private var pulseScale = 0.1f
+    private var showFps = true
 
     private val rig = CameraRig(sim.map.width, sim.map.height)
     private val hudViewport = ScreenViewport()
@@ -48,7 +68,8 @@ class MatchScreen(
     private val shapes = ShapeRenderer()
     private val textures = Textures()
     private val planetTextures = PlanetTextures()
-    private val backdrop = Backdrop(theme, textures, sim.map.width, sim.map.height)
+    private var backdropTheme = backdropThemeFromSettings()
+    private var backdrop = Backdrop(backdropTheme, textures, sim.map.width, sim.map.height)
     private val font = BitmapFont().apply { data.setScale(1.6f) }
     private val tint = Color()
     private val particles = Particles(textures)
@@ -92,7 +113,7 @@ class MatchScreen(
     private var fps = 0
 
     init {
-        Gdx.input.inputProcessor = input
+        applyLiveSettings()
         rig.zoom = initialZoom
         // Aproximado: centraliza na base do jogador.
         if (initialZoom < 1f) sim.planets.firstOrNull { it.owner == PLAYER }?.let { rig.targetX = it.x; rig.targetY = it.y }
@@ -100,10 +121,67 @@ class MatchScreen(
 
     private fun newSimulation(): Simulation {
         val base = StandardMaps.quad4()
-        val map = if (startUnitsOverride > 0) {
-            base.copy(planets = base.planets.map { if (it.owner >= 0) it.copy(startUnits = startUnitsOverride) else it })
-        } else base
-        return Simulation(map, seed)
+        val startUnits = if (startUnitsOverride > 0) startUnitsOverride else settings.int(Params.START_UNITS)
+        val map = base.copy(planets = base.planets.map { if (it.owner >= 0) it.copy(startUnits = startUnits) else it })
+        return Simulation(map, seed, settings.simConfig())
+    }
+
+    private fun newBots(): BotDriver = BotDriver.standard(
+        sim, seed,
+        dropRate = settings.int(Params.BOT_HANDICAP),
+        personalities = settings.personalities(),
+        startTick = settings.int(Params.AI_START),
+    )
+
+    private fun backdropThemeFromSettings(): NebulaTheme =
+        theme.copy(starCount = settings.int(Params.STARS), nebulaOpacity = settings[Params.NEBULA])
+
+    /** Lê os parâmetros de Visual e Câmera (valem ao voltar do menu). */
+    private fun applyLiveSettings() {
+        unitSize = settings[Params.UNIT_SIZE]
+        unitCore = settings[Params.UNIT_CORE]
+        cometLength = settings[Params.COMET_LENGTH]
+        orbitTail = settings[Params.ORBIT_TAIL]
+        orbitTilt = settings[Params.ORBIT_TILT]
+        auraIntensity = settings[Params.AURA]
+        pulseScale = settings[Params.PULSE]
+        showFps = settings.bool(Params.SHOW_FPS)
+        debugAi = settings.bool(Params.DEBUG_AI) || debugAiForced
+        rig.configure(settings[Params.FOV], settings[Params.MAX_PITCH], settings[Params.MIN_ZOOM], settings[Params.MAX_ZOOM])
+        input.edgeResistance = settings[Params.EDGE_RESISTANCE]
+        input.returnRate = settings[Params.RETURN_RATE]
+        val newTheme = backdropThemeFromSettings()
+        if (newTheme != backdropTheme) {
+            backdrop.dispose()
+            backdropTheme = newTheme
+            backdrop = Backdrop(newTheme, textures, sim.map.width, sim.map.height)
+        }
+    }
+
+    /** Botão "Ajustes" no HUD e tecla Voltar/Esc; o resto vai para os gestos da partida. */
+    private val hudInput = object : InputAdapter() {
+        override fun touchDown(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean {
+            val y = Gdx.graphics.height - screenY
+            if (screenX >= settingsButtonX && y >= settingsButtonY) { onOpenSettings(); return true }
+            return false
+        }
+
+        override fun keyDown(keycode: Int): Boolean {
+            if (keycode == Input.Keys.BACK || keycode == Input.Keys.ESCAPE) { onOpenSettings(); return true }
+            return false
+        }
+    }
+    private var settingsButtonX = 0f
+    private var settingsButtonY = 0f
+
+    override fun show() {
+        applyLiveSettings()
+        Gdx.input.inputProcessor = InputMultiplexer(hudInput, input)
+    }
+
+    /** Recomeça a partida com os parâmetros atuais de Partida, Simulação e IA. */
+    fun restartWithSettings() {
+        restart()
     }
 
     // ---- ciclo ----
@@ -182,9 +260,9 @@ class MatchScreen(
             val breathe = 1f + 0.04f * MathUtils.sin(time * 1.4f + p.id * 1.7f)
             val beat = pulse[p.id]
             // Aura grande e tênue (AJ-20) + coroa; ambas reforçadas no pulso de produção (AJ-21).
-            batch.setColor(c.withAlpha(0.11f + 0.08f * beat))
+            batch.setColor(c.withAlpha((0.11f + 0.08f * beat) * auraIntensity))
             drawStanding(textures.softGlow, p.x, p.y, r * 9f * breathe)
-            batch.setColor(c.withAlpha(0.28f + 0.3f * beat))
+            batch.setColor(c.withAlpha((0.28f + 0.3f * beat) * auraIntensity))
             drawStanding(textures.softGlow, p.x, p.y, r * (4.2f + 0.8f * beat) * breathe)
         }
 
@@ -194,7 +272,7 @@ class MatchScreen(
         // Esferas (normal) e borda acesa (aditivo).
         batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
         for (p in sim.planets) {
-            val r = sphereRadius(p) * (1f + PULSE_SCALE * pulse[p.id])
+            val r = sphereRadius(p) * (1f + pulseScale * pulse[p.id])
             val c = Palette.of(p.owner)
             when {
                 p.level >= 1 -> batch.setColor(lerp(c.r, 1f, 0.1f), lerp(c.g, 1f, 0.1f), lerp(c.b, 1f, 0.1f), 1f)
@@ -298,8 +376,8 @@ class MatchScreen(
             val vy = drawVY[i] * ppu / rig.upright
             val speed = sqrt(vx * vx + vy * vy)
             if (speed > 0.3f * ppu) {
-                val len = UNIT_SIZE * scale + speed * (if (orbiting) ORBIT_TAIL else COMET_LENGTH)
-                val width = UNIT_SIZE * scale * 0.5f
+                val len = unitSize * scale + speed * (if (orbiting) orbitTail else cometLength)
+                val width = unitSize * scale * 0.5f
                 val angle = MathUtils.atan2(vy, vx) * MathUtils.radiansToDegrees
                 batch.setColor(c.r, c.g, c.b, 0.6f * dim)
                 // A cabeça fica na posição da unidade; o rastro se estende para trás.
@@ -308,17 +386,17 @@ class MatchScreen(
             // "Conta de vidro" (AJ-18): halo da facção, anel fino em elipse e estrela de 4 pontas.
             if (selected) {
                 batch.setColor(1f, 1f, 1f, 0.95f * dim) // unidades selecionadas ficam brancas (AJ-06)
-                draw(textures.glow, x, y, UNIT_SIZE * scale * 1.15f)
+                draw(textures.glow, x, y, unitSize * scale * 1.15f)
             } else {
                 batch.setColor(c.r, c.g, c.b, 0.8f * dim)
-                draw(textures.glow, x, y, UNIT_SIZE * scale)
+                draw(textures.glow, x, y, unitSize * scale)
             }
-            val ringW = UNIT_SIZE * scale * 1.05f
+            val ringW = unitSize * scale * 1.05f
             val ringH = ringW * 0.44f
             batch.setColor(lerp(c.r, 1f, 0.6f), lerp(c.g, 1f, 0.6f), lerp(c.b, 1f, 0.6f), 0.3f * dim)
             batch.draw(textures.ring, x - ringW / 2, y - ringH / 2, ringW, ringH)
             batch.setColor(1f, 1f, 1f, 0.9f * dim)
-            draw(textures.star4, x, y, UNIT_CORE * scale * 1.5f)
+            draw(textures.star4, x, y, unitCore * scale * 1.5f)
         }
     }
 
@@ -448,10 +526,17 @@ class MatchScreen(
             hudText.append(Palette.factionNames[f.id]).append(' ').append(sim.totalPower(f.id))
             x += font.draw(batch, hudText, x, top).width + 28f
         }
-        font.color = Color.GRAY
-        hudText.setLength(0)
-        hudText.append(fps).append(" fps")
-        font.draw(batch, hudText, hudViewport.worldWidth - 120f, top)
+        // Botão "Ajustes" no canto superior direito (área de toque generosa).
+        font.color = Color(0.75f, 0.85f, 0.95f, 1f)
+        val label = font.draw(batch, "Ajustes", hudViewport.worldWidth - 140f, top)
+        settingsButtonX = hudViewport.worldWidth - 170f
+        settingsButtonY = top - label.height - 30f
+        if (showFps) {
+            font.color = Color.GRAY
+            hudText.setLength(0)
+            hudText.append(fps).append(" fps")
+            font.draw(batch, hudText, hudViewport.worldWidth - 270f, top)
+        }
         if (debugAi) drawAiDebugText()
 
         val result = when {
@@ -493,7 +578,7 @@ class MatchScreen(
      * Achatamento da órbita no plano: com a câmera inclinada o próprio plano já achata, então compensa
      * para a elipse na tela manter a mesma proporção (AJ-07 + REF-06).
      */
-    private fun orbitSquash(): Float = (ORBIT_TILT * rig.upright).coerceAtMost(1f)
+    private fun orbitSquash(): Float = (orbitTilt * rig.upright).coerceAtMost(1f)
 
     /** Anel achatado verticalmente (órbita vista em perspectiva), girado em [rotation] graus. */
     private fun drawEllipse(texture: TextureRegion, cx: Float, cy: Float, radius: Float, squash: Float, rotation: Float = 0f) {
@@ -575,7 +660,7 @@ class MatchScreen(
 
     private fun restart() {
         sim = newSimulation()
-        bots = BotDriver.standard(sim, seed)
+        bots = newBots()
         prevX = FloatArray(0); prevY = FloatArray(0); prevAlive = BooleanArray(0)
         selectionActive = false
         lassoActive = false
@@ -602,16 +687,11 @@ class MatchScreen(
         private const val STEP = 1f / 60f
         private const val MAX_FRAME_DELTA = 0.25f
         private const val MAX_STEPS_PER_FRAME = 4
-        private const val UNIT_SIZE = 15f
-        private const val UNIT_CORE = 5.5f
-        private const val COMET_LENGTH = 7f
         private const val TAP_MARGIN = 22f
         private const val MIN_SELECTION_RADIUS = 12f
         private const val ORDER_FX_SECONDS = 0.5f
         private const val ARC_SEGMENTS = 48
 
-        /** Achatamento vertical da órbita em perspectiva (AJ-07). */
-        private const val ORBIT_TILT = 0.38f
         /** Inclinação de cada plano de órbita, por quantidade de planos (= nível). */
         private val PLANE_ANGLES = arrayOf(
             floatArrayOf(0f),
@@ -620,8 +700,6 @@ class MatchScreen(
             floatArrayOf(-22f, 22f, -66f, 66f),
             floatArrayOf(0f, -36f, 36f, -72f, 72f),
         )
-        private const val ORBIT_TAIL = 4f
         private const val PULSE_DECAY = 7f
-        private const val PULSE_SCALE = 0.1f
     }
 }
