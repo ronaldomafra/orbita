@@ -2,6 +2,7 @@ package dev.orbita.game.settings
 
 import com.badlogic.gdx.Preferences
 import dev.orbita.ai.StrategyWeights
+import dev.orbita.sim.MapLibrary
 import dev.orbita.sim.SimConfig
 import kotlin.math.roundToInt
 
@@ -9,6 +10,9 @@ import kotlin.math.roundToInt
 class Settings(private val prefs: Preferences?) {
 
     private val values = FloatArray(Params.all.size) { Params.all[it].default }
+
+    /** Mapa escolhido no menu "Mapas" (id de `MapLibrary`). */
+    var mapId: String = MapLibrary.all.first().id
 
     init {
         load()
@@ -31,11 +35,13 @@ class Settings(private val prefs: Preferences?) {
     fun load() {
         val prefs = prefs ?: return
         for (p in Params.all) if (prefs.contains(p.key)) set(p, prefs.getFloat(p.key))
+        mapId = prefs.getString(MAP_KEY, mapId)
     }
 
     fun save() {
         val prefs = prefs ?: return
         for (p in Params.all) prefs.putFloat(p.key, values[p.index])
+        prefs.putString(MAP_KEY, mapId)
         prefs.flush()
     }
 
@@ -75,5 +81,6 @@ class Settings(private val prefs: Preferences?) {
 
     companion object {
         const val PREFS_NAME = "orbita-settings"
+        private const val MAP_KEY = "match.map"
     }
 }

@@ -21,7 +21,7 @@ import dev.orbita.sim.Rules
 import dev.orbita.sim.SendUnits
 import dev.orbita.sim.SimEvents
 import dev.orbita.sim.Simulation
-import dev.orbita.sim.StandardMaps
+import dev.orbita.sim.MapLibrary
 import dev.orbita.sim.Target
 import dev.orbita.sim.UnitStore
 import ktx.app.KtxScreen
@@ -37,6 +37,8 @@ class MatchScreen(
     private val settings: Settings,
     /** Abre o menu de ajustes (a partida fica pausada enquanto ele está aberto). */
     private val onOpenSettings: () -> Unit,
+    /** Abre a lista de mapas. */
+    private val onOpenMaps: () -> Unit,
     private val seed: Long = System.nanoTime(),
     private var debugAi: Boolean = false,
     /** > 0 substitui as unidades iniciais de cada base (teste de estresse). */
@@ -121,7 +123,7 @@ class MatchScreen(
     }
 
     private fun newSimulation(): Simulation {
-        val base = StandardMaps.quad4()
+        val base = MapLibrary.byId(settings.mapId).build()
         val startUnits = if (startUnitsOverride > 0) startUnitsOverride else settings.int(Params.START_UNITS)
         val map = base.copy(planets = base.planets.map { if (it.owner >= 0) it.copy(startUnits = startUnits) else it })
         return Simulation(map, seed, settings.simConfig())
@@ -164,7 +166,9 @@ class MatchScreen(
     private val hudInput = object : InputAdapter() {
         override fun touchDown(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean {
             val y = Gdx.graphics.height - screenY
-            if (screenX >= settingsButtonX && y >= settingsButtonY) { onOpenSettings(); return true }
+            if (y < settingsButtonY) return false
+            if (screenX >= settingsButtonX) { onOpenSettings(); return true }
+            if (screenX >= mapsButtonX) { onOpenMaps(); return true }
             return false
         }
 
@@ -174,6 +178,7 @@ class MatchScreen(
         }
     }
     private var settingsButtonX = 0f
+    private var mapsButtonX = 0f
     private var settingsButtonY = 0f
 
     override fun show() {
@@ -540,16 +545,18 @@ class MatchScreen(
             }
             x += width + 28f
         }
-        // Botão "Ajustes" no canto superior direito (área de toque generosa).
+        // Botões "Mapas" e "Ajustes" no canto superior direito (áreas de toque generosas).
         font.color = Color(0.75f, 0.85f, 0.95f, 1f)
         val label = font.draw(batch, "Ajustes", hudViewport.worldWidth - 140f, top)
-        settingsButtonX = hudViewport.worldWidth - 170f
+        font.draw(batch, "Mapas", hudViewport.worldWidth - 280f, top)
+        settingsButtonX = hudViewport.worldWidth - 165f
+        mapsButtonX = hudViewport.worldWidth - 305f
         settingsButtonY = top - label.height - 30f
         if (showFps) {
             font.color = Color.GRAY
             hudText.setLength(0)
             hudText.append(fps).append(" fps")
-            font.draw(batch, hudText, hudViewport.worldWidth - 270f, top)
+            font.draw(batch, hudText, hudViewport.worldWidth - 410f, top)
         }
         if (debugAi) drawAiDebugText()
 

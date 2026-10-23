@@ -3,6 +3,7 @@ package dev.orbita.game
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Input
 import dev.orbita.game.match.MatchScreen
+import dev.orbita.game.settings.MapsScreen
 import dev.orbita.game.settings.Settings
 import dev.orbita.game.settings.SettingsScreen
 import dev.orbita.game.spike.SpikeScreen
@@ -30,6 +31,7 @@ class OrbitaGame(
         val match = MatchScreen(
             settings = settings,
             onOpenSettings = { setScreen<SettingsScreen>() },
+            onOpenMaps = { setScreen<MapsScreen>() },
             debugAi = debugAi,
             startUnitsOverride = stressUnits,
             initialZoom = initialZoom,
@@ -40,6 +42,13 @@ class OrbitaGame(
                 settings = settings,
                 onBack = { setScreen<MatchScreen>() },
                 onApplyAndRestart = { match.restartWithSettings(); setScreen<MatchScreen>() },
+            ),
+        )
+        addScreen(
+            MapsScreen(
+                settings = settings,
+                onBack = { setScreen<MatchScreen>() },
+                onSelect = { match.restartWithSettings(); setScreen<MatchScreen>() },
             ),
         )
         setScreen<MatchScreen>()
