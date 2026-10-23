@@ -61,6 +61,7 @@ class MatchScreen(
     private var auraIntensity = 1f
     private var pulseScale = 0.1f
     private var showFps = true
+    private var showProfiles = true
 
     private val rig = CameraRig(sim.map.width, sim.map.height)
     private val hudViewport = ScreenViewport()
@@ -146,6 +147,7 @@ class MatchScreen(
         auraIntensity = settings[Params.AURA]
         pulseScale = settings[Params.PULSE]
         showFps = settings.bool(Params.SHOW_FPS)
+        showProfiles = settings.bool(Params.SHOW_PROFILES)
         debugAi = settings.bool(Params.DEBUG_AI) || debugAiForced
         rig.configure(settings[Params.FOV], settings[Params.MAX_PITCH], settings[Params.MIN_ZOOM], settings[Params.MAX_ZOOM])
         input.edgeResistance = settings[Params.EDGE_RESISTANCE]
@@ -521,10 +523,22 @@ class MatchScreen(
         val top = hudViewport.worldHeight - 16f
         var x = 16f
         for (f in sim.factions) {
-            font.color = if (f.eliminated) Color.DARK_GRAY else Palette.of(f.id)
+            val color = if (f.eliminated) Color.DARK_GRAY else Palette.of(f.id)
+            font.color = color
             hudText.setLength(0)
             hudText.append(Palette.factionNames[f.id]).append(' ').append(sim.totalPower(f.id))
-            x += font.draw(batch, hudText, x, top).width + 28f
+            val width = font.draw(batch, hudText, x, top).width
+            // Perfil do bot logo abaixo do nome (ajuste "Mostrar perfil dos bots").
+            val profile = if (showProfiles) profileOf(f.id) else null
+            if (profile != null) {
+                val scaleX = font.data.scaleX
+                val scaleY = font.data.scaleY
+                font.data.setScale(scaleX * PROFILE_SCALE, scaleY * PROFILE_SCALE)
+                font.setColor(color.r, color.g, color.b, 0.65f)
+                font.draw(batch, profile, x, top - font.lineHeight / PROFILE_SCALE * 0.95f)
+                font.data.setScale(scaleX, scaleY)
+            }
+            x += width + 28f
         }
         // Botão "Ajustes" no canto superior direito (área de toque generosa).
         font.color = Color(0.75f, 0.85f, 0.95f, 1f)
@@ -550,6 +564,9 @@ class MatchScreen(
         }
         batch.end()
     }
+
+    /** Nome da personalidade do bot da facção, ou null para o jogador. */
+    private fun profileOf(faction: Int): String? = bots.bots.firstOrNull { it.faction == faction }?.weights?.name
 
     private fun drawAiDebugText() {
         var y = hudViewport.worldHeight - 60f
@@ -701,5 +718,6 @@ class MatchScreen(
             floatArrayOf(0f, -36f, 36f, -72f, 72f),
         )
         private const val PULSE_DECAY = 7f
+        private const val PROFILE_SCALE = 0.72f
     }
 }

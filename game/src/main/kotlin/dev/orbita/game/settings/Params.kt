@@ -95,6 +95,7 @@ object Params {
     val NEBULA = p("visual.nebula", "Opacidade da nebulosa", Category.VISUAL, 0f, 1f, 0.01f, 0.28f)
     val STARS = p("visual.stars", "Quantidade de estrelas", Category.VISUAL, 0f, 4000f, 100f, 1400f, Kind.INT)
     val SHOW_FPS = bool("visual.showFps", "Mostrar fps", Category.VISUAL, true)
+    val SHOW_PROFILES = bool("visual.showProfiles", "Mostrar perfil dos bots", Category.VISUAL, true)
     val DEBUG_AI = bool("visual.debugAi", "Mostrar decisões da IA", Category.VISUAL, false)
 
     // ---- Câmera ----
