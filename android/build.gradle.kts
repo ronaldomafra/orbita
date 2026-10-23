@@ -1,10 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     kotlin("android")
 }
 
+
 val gdxVersion: String by project
 val natives: Configuration by configurations.creating
+
+// Assinatura de release: android/keystore.properties + android/release.jks (fora do git).
+val keystoreProps = Properties().apply {
+    val f = file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
 
 android {
     namespace = "dev.orbita.android"
@@ -14,8 +23,19 @@ android {
         applicationId = "dev.orbita.spike"
         minSdk = 21
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.0.1-spike"
+        versionCode = 2
+        versionName = "0.1.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.isNotEmpty()) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     sourceSets["main"].jniLibs.srcDirs("libs")
@@ -26,7 +46,10 @@ android {
     }
 
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
+        }
     }
 }
 

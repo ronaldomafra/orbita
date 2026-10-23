@@ -25,3 +25,9 @@ out/
 
 # Android natives copiados no build
 android/libs/
+
+# Assinatura de release (nunca versionar)
+*.jks
+*.keystore
+keystore.properties
+dist/
