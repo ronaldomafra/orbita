@@ -99,8 +99,8 @@ object Params {
     val DEBUG_AI = bool("visual.debugAi", "Mostrar decisões da IA", Category.VISUAL, false)
 
     // ---- Câmera ----
-    val MAX_PITCH = p("camera.maxPitch", "Inclinação máxima ao aproximar (°)", Category.CAMERA, 0f, 70f, 1f, 42f)
-    val FOV = p("camera.fov", "Campo de visão (°)", Category.CAMERA, 20f, 80f, 1f, 40f)
+    val MAX_PITCH = p("camera.maxPitch", "Inclinação máxima ao aproximar (graus)", Category.CAMERA, 0f, 70f, 1f, 42f)
+    val FOV = p("camera.fov", "Campo de visão (graus)", Category.CAMERA, 20f, 80f, 1f, 40f)
     val MIN_ZOOM = p("camera.minZoom", "Zoom máximo de aproximação", Category.CAMERA, 0.2f, 0.95f, 0.01f, 0.42f)
     val MAX_ZOOM = p("camera.maxZoom", "Zoom máximo de afastamento", Category.CAMERA, 1f, 4f, 0.05f, 2.2f)
     val EDGE_RESISTANCE = p("camera.edgeResistance", "Resistência além da borda", Category.CAMERA, 0.05f, 1f, 0.01f, 0.45f)

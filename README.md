@@ -4,7 +4,9 @@
 Kotlin + libGDX, simulação determinística, bots com IA própria e 13 mapas. Feito num único dia de trabalho,
 em par com um agente de IA (Claude Code).
 
-![Partida no Órbita](docs/img/evolucao-5-texturas.png)
+![Fim de partida no Órbita: planetas evoluídos com vários planos de órbita](docs/img/planetas-evoluidos.png)
+
+*Fim de partida no Galaxy A10: o bot Agressivo (âmbar) domina com ~3.900 unidades, e o overlay mostra as decisões da IA.*
 
 > **Sobre a origem:** o projeto começou como um teste do **REA** (ferramenta de engenharia reversa via MCP)
 > usando o jogo *Auralux: Constellations* como alvo de estudo. O objetivo era validar o REA num caso real.
@@ -25,9 +27,29 @@ anulam um a um. Vence quem sobrar.
 - **Menu de ajustes** com ~60 parâmetros de simulação, IA, visual e câmera, todos editáveis no próprio jogo.
 - **60 fps** num Galaxy A10 (aparelho de entrada, ARMv7), com milhares de unidades na tela.
 
-| Mapas | Perspectiva | Ajustes da IA |
+## Telas
+
+Todas as capturas foram feitas num Galaxy A10 (Android 11) via ADB.
+
+| Partida | Decisões da IA | Câmera aproximada |
 |---|---|---|
-| ![Mapas](docs/img/mapas.png) | ![Perspectiva](docs/img/perspectiva.png) | ![Ajustes](docs/img/ajustes-ia.png) |
+| ![Partida](docs/img/partida.png) | ![Overlay da IA](docs/img/ia-overlay.png) | ![Perspectiva](docs/img/perspectiva.png) |
+
+**Mapas**
+
+| Menu de mapas | Quadrante (4 facções) | Infinito (4 facções) |
+|---|---|---|
+| ![Mapas](docs/img/mapas.png) | ![Quadrante](docs/img/mapa-quadrante.png) | ![Infinito](docs/img/mapa-infinito.png) |
+| **Cisão** | **Explosão** | **Hexágono** |
+| ![Cisão](docs/img/mapa-cisao.png) | ![Explosão](docs/img/mapa-explosao.png) | ![Hexágono](docs/img/mapa-hexagono.png) |
+
+**Ajustes:** tudo pode ser alterado sem recompilar.
+
+| Partida | Simulação | IA |
+|---|---|---|
+| ![Ajustes: Partida](docs/img/ajustes-partida.png) | ![Ajustes: Simulação](docs/img/ajustes-simulacao.png) | ![Ajustes: IA](docs/img/ajustes-ia.png) |
+| **Visual** | **Câmera** | |
+| ![Ajustes: Visual](docs/img/ajustes-visual.png) | ![Ajustes: Câmera](docs/img/ajustes-camera.png) | |
 
 ## Números
 

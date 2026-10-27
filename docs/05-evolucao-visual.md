@@ -54,9 +54,11 @@ redondos, as órbitas viram elipses e o toque continua exato porque usa o raio d
 
 ## Hoje
 
-| Seleção | Mapas | Perfis dos bots |
+| Partida com os perfis dos bots no HUD | Seleção | Mapa Infinito |
 |---|---|---|
-| ![Seleção](img/selecao.png) | ![Mapa Infinito](img/mapa-infinito.png) | ![HUD](img/hud-perfis.png) |
+| ![Partida](img/partida.png) | ![Seleção](img/selecao.png) | ![Mapa Infinito](img/mapa-infinito.png) |
+
+![Planetas evoluídos](img/planetas-evoluidos.png)
 
 ## Ajustes de jogabilidade (AJ-01…AJ-23)
 

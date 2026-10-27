@@ -4,6 +4,10 @@
 
 *Overlay de debug: linhas de cada fonte até o alvo e o texto `tipo->planeta (enviado/necessário)`.*
 
+![Bot dominando o fim da partida](img/planetas-evoluidos.png)
+
+*Fim de partida: o Agressivo (âmbar) com ~3.900 unidades decide `attack->P9 (1/1)` e `attack->P7 (6/6)`. Com essa quantidade de unidades e o overlay ligado, o A10 fica em ~44 fps.*
+
 ## Princípios
 
 - **Mesma API do jogador.** Os bots só emitem `SendUnits`, exatamente como o toque do jogador. Não há bônus
