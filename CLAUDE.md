@@ -1,17 +1,16 @@
 # Projeto Órbita
 
 Jogo original de estratégia espacial inspirado nas mecânicas de Auralux 2 (`com.wardrumstudios.auralux2`).
-Plano vigente: `doc/Plano_Projeto_Orbita_v2.md` (a v1 fica só como histórico).
+Documentação pública em `README.md` e `docs/`. O material de estudo (plano, dossiês MECH, especificação, backlog) fica arquivado em `evidence/estudo/`, fora do Git.
 
 ## Regras do agente
 
 - Investigação via REA (MCP). Use apenas as operações e os parâmetros anunciados pelo servidor instalado; não invente comandos.
 - NÃO modificar o APK original, NÃO contornar DRM/compras/licenças, NÃO usar root.
 - NÃO copiar código descompilado nem assets para o jogo. O código novo nasce da especificação aprovada em `docs/`.
-- Binários e saídas brutas ficam em `evidence/` (fora do Git). Em `docs/` vão só os dossiês resumidos.
+- Binários, saídas brutas e dossiês de estudo ficam em `evidence/` (fora do Git). O repositório é público: em `docs/` e no código não entram detalhes internos do jogo de referência (offsets, símbolos, formatos de arquivo, chaves de decodificação), só a menção de que o projeto começou como teste do REA com Auralux: Constellations.
 - Toda afirmação sobre o jogo de referência registra: fonte, método, classe/offset/hash, observação × hipótese, confiança e lacunas (formato `MECH-xxx`).
-- Código do jogo só depois do Gate 4 (especificação aprovada), exceto o spike técnico da F5, que não contém regras do jogo.
-- Git local apenas, para checkpoints. Não há remoto.
+- Remoto: `origin` = https://github.com/ronaldomafra/orbita (público).
 
 ## Arquitetura alvo
 

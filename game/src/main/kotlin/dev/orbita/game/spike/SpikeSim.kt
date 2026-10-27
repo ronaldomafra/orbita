@@ -137,7 +137,7 @@ class SpikeSim(val n: Int, seed: Long) {
 
     private fun findNearestEnemies() {
         val range2 = CELL * CELL
-        // Escalonado: cada unidade refaz a busca a cada SCAN_PERIOD ticks (o original faz algo análogo, MECH-004).
+        // Escalonado: cada unidade refaz a busca a cada SCAN_PERIOD ticks.
         val phase = tick and (SCAN_PERIOD - 1)
         for (i in 0 until n) {
             if ((i and (SCAN_PERIOD - 1)) != phase) continue

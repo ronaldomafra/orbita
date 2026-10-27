@@ -311,7 +311,7 @@ class Simulation(
             val dy = units.y[j] - units.y[i]
             val reach = config.clashDistance(maxOf(units.power[i], units.power[j]))
             if (dx * dx + dy * dy > reach * reach) continue
-            // ref: MECH-004 — m = min(a, b); ambos perdem m
+            // m = min(a, b); ambos perdem m
             val m = min(units.power[i], units.power[j])
             events.add(SimEvents.CLASH, (units.x[i] + units.x[j]) * 0.5f, (units.y[i] + units.y[j]) * 0.5f, units.owner[i])
             units.lock[i] = -1
@@ -527,7 +527,7 @@ class Simulation(
 
     /**
      * Planeta destruído: volta ao nível 0 e mantém o dono. As unidades que o tinham como alvo seguem
-     * até o **centro** dele e ficam ali em nuvem (AJ-05, observado no original). ref: MECH-002, LAC-006
+     * até o **centro** dele e ficam ali em nuvem (AJ-05).
      */
     private fun destroy(p: Planet) {
         events.add(SimEvents.DESTROYED, p.x, p.y, p.owner)

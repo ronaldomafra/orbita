@@ -20,7 +20,7 @@ class Planet internal constructor(
 }
 
 class Faction internal constructor(val id: Int) {
-    /** Handicap de dificuldade: descarta 1 de cada [dropRate] unidades produzidas (0 = nunca). ref: LAC-005 */
+    /** Handicap de dificuldade: descarta 1 de cada [dropRate] unidades produzidas (0 = nunca). */
     var dropRate: Int = 0
     var eliminated: Boolean = false
         internal set

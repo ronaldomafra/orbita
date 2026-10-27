@@ -175,7 +175,7 @@ class UtilityBot(
     }
 
     companion object {
-        /** ref: MECH-007 (a IA original começa no tick 256). */
+        /** Os bots começam a agir depois de ~4 s de partida. */
         const val AI_START_TICK = 256
     }
 }

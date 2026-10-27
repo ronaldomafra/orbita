@@ -12,8 +12,8 @@ class MapInfo(
 )
 
 /**
- * Mapas próprios do Órbita, inspirados no **estilo** das fases da constelação Pegasus do Auralux 2
- * (docs/15): mesma ideia de formato e quantidade de planetas, geometria nossa e simétrica.
+ * Mapas próprios do Órbita: formatos clássicos do gênero (anéis, braços, espirais),
+ * com geometria nossa e simétrica.
  * Todos usam o mesmo mundo (1600×760). Mapas de 3 facções têm simetria de 120°; a facção 0
  * (jogador) fica sempre embaixo.
  */

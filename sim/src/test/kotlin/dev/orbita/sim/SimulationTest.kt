@@ -9,7 +9,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
-/** Testes do núcleo (spec 08-plano-mvp.md §6). */
+/** Testes do núcleo (ver docs/04-testes-e-desempenho.md). */
 class SimulationTest {
 
     private val noProduction = SimConfig(productionEnabled = false)
